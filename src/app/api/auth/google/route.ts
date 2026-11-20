@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getAppOrigin, isGoogleAuthConfigured } from "@/lib/auth";
+import {
+  getAppOrigin,
+  isGoogleAuthConfigured,
+  safeNextPath,
+} from "@/lib/auth";
 
 export async function GET(request: Request) {
   if (!isGoogleAuthConfigured()) {
@@ -9,7 +13,7 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const next = searchParams.get("next") || "/";
+  const next = safeNextPath(searchParams.get("next"));
   const origin = getAppOrigin(request);
   const redirectUri = `${origin}/api/auth/google/callback`;
 

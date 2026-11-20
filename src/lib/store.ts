@@ -1,7 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { Pool } from "pg";
+import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
+import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
 import type {
   HotelStore,
@@ -21,8 +22,6 @@ const DATA_FILE = path.join(DATA_DIR, "hotel.json");
 
 type GlobalStore = {
   hotelStore?: HotelStore;
-  hotelPool?: Pool;
-  hotelPgReady?: boolean;
 };
 
 const globalForStore = globalThis as typeof globalThis & GlobalStore;
@@ -41,13 +40,11 @@ function cloneStore(store: HotelStore): HotelStore {
 }
 
 async function ensureFileStore(): Promise<HotelStore> {
-  if (globalForStore.hotelStore) {
-    return globalForStore.hotelStore;
-  }
+  if (globalForStore.hotelStore) return globalForStore.hotelStore;
 
   try {
     const raw = await fs.readFile(DATA_FILE, "utf8");
-    globalForStore.hotelStore = JSON.parse(raw) as HotelStore;
+    globalForStore.hotelStore = normalizeStore(JSON.parse(raw) as HotelStore);
   } catch {
     globalForStore.hotelStore = createSeedStore();
     await persistFileStore(globalForStore.hotelStore);
@@ -62,77 +59,119 @@ async function persistFileStore(store: HotelStore): Promise<void> {
   globalForStore.hotelStore = store;
 }
 
-function getPool(): Pool | null {
-  const url = process.env.DATABASE_URL;
-  if (!url) return null;
-  if (!globalForStore.hotelPool) {
-    globalForStore.hotelPool = new Pool({
-      connectionString: url,
-      ssl: url.includes("localhost") ? undefined : { rejectUnauthorized: false },
-    });
+async function readFirestoreStore(): Promise<HotelStore> {
+  const db = getDb();
+  const [
+    servicesSnap,
+    roomTypesSnap,
+    roomsSnap,
+    reservationsSnap,
+    loginCodesSnap,
+    mailSnap,
+  ] = await Promise.all([
+    db.collection(COLLECTIONS.services).get(),
+    db.collection(COLLECTIONS.roomTypes).get(),
+    db.collection(COLLECTIONS.rooms).get(),
+    db.collection(COLLECTIONS.reservations).orderBy("createdAt", "desc").get(),
+    db.collection(COLLECTIONS.loginCodes).get(),
+    db.collection(COLLECTIONS.mailOutbox).orderBy("createdAt", "desc").limit(100).get(),
+  ]);
+
+  if (servicesSnap.empty || roomTypesSnap.empty || roomsSnap.empty) {
+    const seed = createSeedStore();
+    await seedFirestore(seed);
+    return cloneStore(seed);
   }
-  return globalForStore.hotelPool;
+
+  return cloneStore({
+    services: servicesSnap.docs.map((doc) => doc.data() as Service),
+    roomTypes: roomTypesSnap.docs.map((doc) => doc.data() as RoomType),
+    rooms: roomsSnap.docs.map((doc) => doc.data() as Room),
+    reservations: reservationsSnap.docs.map((doc) => doc.data() as Reservation),
+    loginCodes: loginCodesSnap.docs.map((doc) => doc.data() as LoginCode),
+    mailOutbox: mailSnap.docs.map((doc) => doc.data() as MailMessage),
+  });
 }
 
-async function ensurePgSchema(pool: Pool): Promise<void> {
-  if (globalForStore.hotelPgReady) return;
+export async function seedFirestore(store: HotelStore = createSeedStore()): Promise<void> {
+  const db = getDb();
+  const batch = db.batch();
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS hotel_store (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      data JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
+    ...HOTEL,
+    updatedAt: new Date().toISOString(),
+  });
 
-  const existing = await pool.query(`SELECT data FROM hotel_store WHERE id = 1`);
-  if (existing.rowCount === 0) {
-    const seed = createSeedStore();
-    await pool.query(
-      `INSERT INTO hotel_store (id, data) VALUES (1, $1::jsonb)`,
-      [JSON.stringify(seed)],
-    );
+  for (const service of store.services) {
+    batch.set(db.collection(COLLECTIONS.services).doc(service.id), service);
+  }
+  for (const roomType of store.roomTypes) {
+    batch.set(db.collection(COLLECTIONS.roomTypes).doc(roomType.id), roomType);
+  }
+  for (const room of store.rooms) {
+    batch.set(db.collection(COLLECTIONS.rooms).doc(room.id), room);
   }
 
-  globalForStore.hotelPgReady = true;
+  await batch.commit();
+}
+
+async function writeFirestoreStore(store: HotelStore): Promise<void> {
+  const db = getDb();
+  const batch = db.batch();
+
+  batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
+    ...HOTEL,
+    updatedAt: new Date().toISOString(),
+  });
+
+  for (const service of store.services) {
+    batch.set(db.collection(COLLECTIONS.services).doc(service.id), service);
+  }
+  for (const roomType of store.roomTypes) {
+    batch.set(db.collection(COLLECTIONS.roomTypes).doc(roomType.id), roomType);
+  }
+  for (const room of store.rooms) {
+    batch.set(db.collection(COLLECTIONS.rooms).doc(room.id), room);
+  }
+  for (const reservation of store.reservations) {
+    batch.set(
+      db.collection(COLLECTIONS.reservations).doc(reservation.id),
+      reservation,
+    );
+  }
+  for (const code of store.loginCodes) {
+    batch.set(db.collection(COLLECTIONS.loginCodes).doc(code.email), code);
+  }
+  for (const mail of store.mailOutbox.slice(0, 100)) {
+    batch.set(db.collection(COLLECTIONS.mailOutbox).doc(mail.id), mail);
+  }
+
+  await batch.commit();
+  globalForStore.hotelStore = store;
 }
 
 async function readStore(): Promise<HotelStore> {
-  const pool = getPool();
-  if (!pool) {
-    return cloneStore(await ensureFileStore());
+  if (isFirestoreConfigured()) {
+    try {
+      return await readFirestoreStore();
+    } catch (error) {
+      console.error("Firestore no disponible, usando almacén local:", error);
+      return cloneStore(await ensureFileStore());
+    }
   }
-
-  try {
-    await ensurePgSchema(pool);
-    const result = await pool.query(`SELECT data FROM hotel_store WHERE id = 1`);
-    return cloneStore(result.rows[0].data as HotelStore);
-  } catch (error) {
-    console.error("Postgres no disponible, usando almacén local:", error);
-    return cloneStore(await ensureFileStore());
-  }
+  return cloneStore(await ensureFileStore());
 }
 
 async function writeStore(store: HotelStore): Promise<void> {
-  const pool = getPool();
-  if (!pool) {
-    await persistFileStore(store);
-    return;
+  if (isFirestoreConfigured()) {
+    try {
+      await writeFirestoreStore(store);
+      return;
+    } catch (error) {
+      console.error("Error al guardar en Firestore, usando archivo local:", error);
+    }
   }
-
-  try {
-    await ensurePgSchema(pool);
-    await pool.query(
-      `INSERT INTO hotel_store (id, data, updated_at)
-       VALUES (1, $1::jsonb, NOW())
-       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-      [JSON.stringify(store)],
-    );
-    globalForStore.hotelStore = store;
-  } catch (error) {
-    console.error("Error al guardar en Postgres, usando archivo local:", error);
-    await persistFileStore(store);
-  }
+  await persistFileStore(store);
 }
 
 function nightsBetween(checkIn: string, checkOut: string): number {
@@ -151,6 +190,10 @@ function datesOverlap(
 
 export function isRoomBookable(status: RoomStatus): boolean {
   return status === "disponible" || status === "limpieza";
+}
+
+export function getStorageMode(): "firestore" | "local" {
+  return isFirestoreConfigured() ? "firestore" : "local";
 }
 
 export async function getCatalog() {
@@ -233,17 +276,16 @@ export async function createReservation(input: {
   guestDocument: string;
   specialRequests?: string;
   paymentMethod: PaymentMethod;
+  paymentStatus?: Reservation["paymentStatus"];
+  status?: ReservationStatus;
 }): Promise<Reservation> {
   const store = await readStore();
   const roomType = store.roomTypes.find((type) => type.id === input.roomTypeId);
-  if (!roomType) {
-    throw new Error("Tipo de habitación no encontrado");
-  }
+  if (!roomType) throw new Error("Tipo de habitación no encontrado");
 
   if (input.guests < 1 || input.guests > roomType.maxGuests) {
     throw new Error(`Máximo ${roomType.maxGuests} huéspedes para este tipo`);
   }
-
   if (input.checkOut <= input.checkIn) {
     throw new Error("La fecha de salida debe ser posterior al ingreso");
   }
@@ -280,11 +322,12 @@ export async function createReservation(input: {
 
   const nights = nightsBetween(input.checkIn, input.checkOut);
   const totalAmount = nights * roomType.basePrice;
-  const paidOnline = input.paymentMethod !== "pago_en_hotel";
+  const status = input.status ?? "pendiente";
+  const paymentStatus = input.paymentStatus ?? "pendiente";
 
   const reservation: Reservation = {
     id: `res-${crypto.randomUUID()}`,
-    code: `BP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    code: `GR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     roomTypeId: input.roomTypeId,
     roomId: assignedRoom?.id ?? null,
     checkIn: input.checkIn,
@@ -296,14 +339,14 @@ export async function createReservation(input: {
     guestDocument: input.guestDocument.trim(),
     specialRequests: input.specialRequests?.trim() ?? "",
     paymentMethod: input.paymentMethod,
-    paymentStatus: paidOnline ? "pagado" : "pendiente",
-    status: "confirmada",
+    paymentStatus,
+    status,
     nights,
     totalAmount,
     createdAt: new Date().toISOString(),
   };
 
-  if (assignedRoom) {
+  if (assignedRoom && status === "confirmada") {
     assignedRoom.status = "ocupada";
   }
 
@@ -312,14 +355,42 @@ export async function createReservation(input: {
   return reservation;
 }
 
+export async function confirmReservationPayment(
+  reservationId: string,
+): Promise<Reservation> {
+  const store = await readStore();
+  const reservation = store.reservations.find((item) => item.id === reservationId);
+  if (!reservation) throw new Error("Reserva no encontrada");
+
+  reservation.paymentStatus = "pagado";
+  reservation.status = "confirmada";
+
+  if (reservation.roomId) {
+    const room = store.rooms.find((item) => item.id === reservation.roomId);
+    if (room) room.status = "ocupada";
+  }
+
+  await writeStore(store);
+  return reservation;
+}
+
+export async function getReservationById(
+  id: string,
+): Promise<{ reservation: Reservation; roomType: RoomType } | null> {
+  const store = await readStore();
+  const reservation = store.reservations.find((item) => item.id === id);
+  if (!reservation) return null;
+  const roomType = store.roomTypes.find((type) => type.id === reservation.roomTypeId);
+  if (!roomType) return null;
+  return { reservation, roomType };
+}
+
 export async function listReservations(): Promise<Reservation[]> {
   const store = await readStore();
   return store.reservations;
 }
 
-export async function listReservationsByEmail(
-  email: string,
-): Promise<Reservation[]> {
+export async function listReservationsByEmail(email: string): Promise<Reservation[]> {
   const store = await readStore();
   const normalized = email.trim().toLowerCase();
   return store.reservations.filter(
@@ -335,9 +406,7 @@ export async function getReservationByCode(
     (item) => item.code.toUpperCase() === code.toUpperCase(),
   );
   if (!reservation) return null;
-  const roomType = store.roomTypes.find(
-    (type) => type.id === reservation.roomTypeId,
-  );
+  const roomType = store.roomTypes.find((type) => type.id === reservation.roomTypeId);
   if (!roomType) return null;
   return { reservation, roomType };
 }
@@ -357,10 +426,7 @@ export async function saveLoginCode(email: string, code: string): Promise<LoginC
   return entry;
 }
 
-export async function consumeLoginCode(
-  email: string,
-  code: string,
-): Promise<boolean> {
+export async function consumeLoginCode(email: string, code: string): Promise<boolean> {
   const store = await readStore();
   const normalized = email.trim().toLowerCase();
   const entry = store.loginCodes.find((item) => item.email === normalized);
@@ -412,24 +478,12 @@ export async function updateReservationStatus(
 ): Promise<Reservation> {
   const store = await readStore();
   const reservation = store.reservations.find((item) => item.id === id);
-  if (!reservation) {
-    throw new Error("Reserva no encontrada");
-  }
+  if (!reservation) throw new Error("Reserva no encontrada");
 
   reservation.status = status;
-
-  if (status === "cancelada" && reservation.roomId) {
+  if ((status === "cancelada" || status === "completada") && reservation.roomId) {
     const room = store.rooms.find((item) => item.id === reservation.roomId);
-    if (room) {
-      room.status = "limpieza";
-    }
-  }
-
-  if (status === "completada" && reservation.roomId) {
-    const room = store.rooms.find((item) => item.id === reservation.roomId);
-    if (room) {
-      room.status = "limpieza";
-    }
+    if (room) room.status = "limpieza";
   }
 
   await writeStore(store);
@@ -442,18 +496,13 @@ export async function updateRoom(
 ): Promise<Room> {
   const store = await readStore();
   const room = store.rooms.find((item) => item.id === id);
-  if (!room) {
-    throw new Error("Habitación no encontrada");
-  }
+  if (!room) throw new Error("Habitación no encontrada");
 
   if (patch.roomTypeId) {
     const typeExists = store.roomTypes.some((type) => type.id === patch.roomTypeId);
-    if (!typeExists) {
-      throw new Error("Tipo de habitación inválido");
-    }
+    if (!typeExists) throw new Error("Tipo de habitación inválido");
     room.roomTypeId = patch.roomTypeId;
   }
-
   if (patch.status) room.status = patch.status;
   if (typeof patch.notes === "string") room.notes = patch.notes;
   if (typeof patch.number === "string") room.number = patch.number;
@@ -479,20 +528,15 @@ export async function updateRoomType(
 ): Promise<RoomType> {
   const store = await readStore();
   const roomType = store.roomTypes.find((item) => item.id === id);
-  if (!roomType) {
-    throw new Error("Tipo no encontrado");
-  }
+  if (!roomType) throw new Error("Tipo no encontrado");
 
   if (patch.serviceIds) {
     const valid = patch.serviceIds.every((serviceId) =>
       store.services.some((service) => service.id === serviceId),
     );
-    if (!valid) {
-      throw new Error("Uno o más servicios no existen");
-    }
+    if (!valid) throw new Error("Uno o más servicios no existen");
     roomType.serviceIds = patch.serviceIds;
   }
-
   if (typeof patch.name === "string") roomType.name = patch.name;
   if (typeof patch.description === "string") roomType.description = patch.description;
   if (typeof patch.basePrice === "number") roomType.basePrice = patch.basePrice;
@@ -512,10 +556,7 @@ export async function createRoom(input: {
 }): Promise<Room> {
   const store = await readStore();
   const typeExists = store.roomTypes.some((type) => type.id === input.roomTypeId);
-  if (!typeExists) {
-    throw new Error("Tipo de habitación inválido");
-  }
-
+  if (!typeExists) throw new Error("Tipo de habitación inválido");
   if (store.rooms.some((room) => room.number === input.number)) {
     throw new Error("Ya existe una habitación con ese número");
   }
@@ -530,7 +571,9 @@ export async function createRoom(input: {
   };
 
   store.rooms.push(room);
-  store.rooms.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  store.rooms.sort((a, b) =>
+    a.number.localeCompare(b.number, undefined, { numeric: true }),
+  );
   await writeStore(store);
   return room;
 }
@@ -551,9 +594,12 @@ export async function getAdminSnapshot() {
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,
     availability,
+    storage: getStorageMode(),
+    hotel: HOTEL,
     stats: {
       totalRooms: store.rooms.length,
-      availableRooms: store.rooms.filter((room) => room.status === "disponible").length,
+      availableRooms: store.rooms.filter((room) => room.status === "disponible")
+        .length,
       occupiedRooms: store.rooms.filter((room) => room.status === "ocupada").length,
       activeReservations: store.reservations.filter(
         (reservation) =>

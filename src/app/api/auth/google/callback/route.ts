@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import {
+  AuthConfigError,
   getAppOrigin,
   isAdminEmail,
   isGoogleAuthConfigured,
   normalizeEmail,
+  safeNextPath,
   setSessionCookie,
 } from "@/lib/auth";
 
@@ -22,7 +24,7 @@ export async function GET(request: Request) {
       const parsed = JSON.parse(
         Buffer.from(stateRaw, "base64url").toString("utf8"),
       ) as { next?: string };
-      if (parsed.next?.startsWith("/")) next = parsed.next;
+      next = safeNextPath(parsed.next);
     }
   } catch {
     next = "/";
@@ -68,19 +70,25 @@ export async function GET(request: Request) {
   const profile = (await profileResponse.json()) as {
     email?: string;
     name?: string;
-    verified_email?: boolean;
   };
 
   if (!profile.email) {
     return NextResponse.redirect(`${origin}/acceso?error=google_sin_correo`);
   }
 
-  const email = normalizeEmail(profile.email);
-  await setSessionCookie({
-    email,
-    name: profile.name || email.split("@")[0],
-    isAdmin: isAdminEmail(email),
-  });
+  try {
+    const email = normalizeEmail(profile.email);
+    await setSessionCookie({
+      email,
+      name: profile.name || email.split("@")[0],
+      isAdmin: isAdminEmail(email),
+    });
+  } catch (error) {
+    if (error instanceof AuthConfigError) {
+      return NextResponse.redirect(`${origin}/acceso?error=sesion_no_configurada`);
+    }
+    throw error;
+  }
 
   return NextResponse.redirect(`${origin}${next}`);
 }

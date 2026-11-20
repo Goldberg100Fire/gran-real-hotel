@@ -30,6 +30,7 @@ export interface RoomType {
   maxGuests: number;
   bedType: string;
   imageGradient: string;
+  imagePath?: string;
   serviceIds: string[];
 }
 

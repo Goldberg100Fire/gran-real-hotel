@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, Manrope } from "next/font/google";
 import { SiteFooter } from "@/components/hotel/site-footer";
-import { HOTEL_NAME, HOTEL_TAGLINE } from "@/lib/seed";
+import { HOTEL } from "@/lib/hotel-info";
 import "./globals.css";
 
 const display = Fraunces({
@@ -18,10 +18,10 @@ const sans = Manrope({
 
 export const metadata: Metadata = {
   title: {
-    default: HOTEL_NAME,
-    template: `%s · ${HOTEL_NAME}`,
+    default: HOTEL.name,
+    template: `%s · ${HOTEL.name}`,
   },
-  description: HOTEL_TAGLINE,
+  description: `${HOTEL.tagline}. ${HOTEL.fullAddress}`,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

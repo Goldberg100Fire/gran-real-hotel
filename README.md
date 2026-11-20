@@ -1,39 +1,52 @@
-# Hotel Brisa Pacífico
+# Gran Real Hotel
 
-Sistema web de reservas hoteleras con acceso por correo, disponibilidad, pagos demo, comprobante por email y panel administrativo.
-
-## Qué incluye
-
-- **Acceso por correo** (`/acceso`): Google OAuth o código de 6 dígitos al email.
-- **Reservas** (`/reservar`): requiere sesión; el comprobante se envía al correo de la sesión.
-- **Mis reservas** (`/mis-reservas`): historial del huésped autenticado.
-- **Admin** (`/admin`): solo correos listados en `ADMIN_ALLOWED_EMAILS`.
-
-## Cómo ejecutar
-
-```bash
-npm install
-npm run dev
-```
-
-Abre el puerto del script (`3451`).
-
-### Acceso local (demo)
-
-1. Ve a `/acceso`, ingresa un correo y usa el código demo que aparece en pantalla.
-2. Para admin, usa un correo de `ADMIN_ALLOWED_EMAILS` (por defecto `admin@brisapacifico.pe`).
-
-### Variables
-
-- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — login con Google
-- `ADMIN_ALLOWED_EMAILS` — correos admin separados por coma
-- `ADMIN_SESSION_SECRET` — firma de cookies
-- `RESEND_API_KEY` / `MAIL_FROM` — envío real de comprobantes (si faltan, modo demo en bandeja admin)
-- `DATABASE_URL` — Postgres opcional; si no hay, usa `data/hotel.json`
-
-En Google Cloud Console, agrega el redirect:
-`https://TU-DOMINIO/api/auth/google/callback` (y el local si pruebas OAuth).
+Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilidad, reservas, acceso por correo y panel admin.
 
 ## Stack
 
-Next.js, TypeScript, Tailwind CSS, shadcn/ui.
+- Next.js + TypeScript + Tailwind
+- **Firestore** (inventario y reservas)
+- Stripe (pagos) y Resend (correos) — siguientes pasos
+
+## Arranque local
+
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Sin Firebase, la app usa datos locales de ejemplo. Con Firebase configurado, usa Firestore.
+
+## Base de datos (Firestore)
+
+Guía completa: [docs/FIRESTORE.md](docs/FIRESTORE.md)
+
+Resumen:
+
+1. Crea el proyecto en Firebase Console  
+2. Activa Firestore (modo producción)  
+3. Publica las reglas de `firestore.rules`  
+4. Genera la service account y guarda las 3 variables  
+5. Ejecuta `npm run seed:firestore`
+
+Verifica con:
+
+```bash
+curl http://127.0.0.1:3451/api/health
+```
+
+## Datos del hotel
+
+- **Dirección:** Calle Tacna Nº 542 · Otuzco · La Libertad  
+- **Cel.:** 978113578 · **Telf.:** 044 727074  
+- **Habitaciones:** Simple, Matrimonial, Doble  
+- **Servicios:** Baño privado, Agua caliente, TV cable, Wi‑Fi  
+
+## Scripts
+
+| Comando | Uso |
+|---|---|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run seed:firestore` | Carga inventario inicial en Firestore |
+| `npm run build` | Build de producción |

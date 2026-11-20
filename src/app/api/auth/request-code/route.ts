@@ -1,10 +1,25 @@
 import { NextResponse } from "next/server";
-import { createLoginCode, normalizeEmail } from "@/lib/auth";
+import {
+  AuthConfigError,
+  createLoginCode,
+  isEmailAuthConfigured,
+  normalizeEmail,
+} from "@/lib/auth";
 import { sendLoginCodeEmail } from "@/lib/mail";
 import { saveLoginCode } from "@/lib/store";
 
 export async function POST(request: Request) {
   try {
+    if (!isEmailAuthConfigured()) {
+      return NextResponse.json(
+        {
+          error:
+            "El acceso por correo no está configurado. Usa Google o pide al administrador activar Resend.",
+        },
+        { status: 503 },
+      );
+    }
+
     const body = await request.json();
     const email = normalizeEmail(String(body.email ?? ""));
     if (!email || !email.includes("@")) {
@@ -13,16 +28,16 @@ export async function POST(request: Request) {
 
     const code = createLoginCode();
     await saveLoginCode(email, code);
-    const mail = await sendLoginCodeEmail({ to: email, code });
+    await sendLoginCodeEmail({ to: email, code });
 
     return NextResponse.json({
       ok: true,
       email,
-      mailMode: mail.mode,
-      // En modo demo devolvemos el código para poder probar sin Resend.
-      demoCode: mail.mode === "demo" ? code : undefined,
     });
   } catch (error) {
+    if (error instanceof AuthConfigError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     const message =
       error instanceof Error ? error.message : "No se pudo enviar el código";
     return NextResponse.json({ error: message }, { status: 500 });

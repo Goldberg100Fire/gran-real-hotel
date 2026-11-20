@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // La app Next.js usa Firebase Admin SDK en el servidor.
+    // Los clientes del navegador NO deben leer/escribir directo.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

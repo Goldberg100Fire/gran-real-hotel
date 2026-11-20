@@ -22,7 +22,6 @@ export function AuthForm({
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"email" | "code">("email");
-  const [demoCode, setDemoCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +42,6 @@ export function AuthForm({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo enviar el código");
-      setDemoCode(data.demoCode ?? null);
       setStep("code");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -134,11 +132,9 @@ export function AuthForm({
           <p className="text-sm text-[var(--ocean-muted)]">
             Enviamos un código a <strong>{email}</strong>
           </p>
-          {demoCode && (
-            <p className="rounded-xl bg-[var(--ocean-mist)] px-3 py-2 text-xs text-[var(--ocean-ink)]">
-              Modo demo (sin Resend): tu código es <strong>{demoCode}</strong>
-            </p>
-          )}
+          <p className="text-xs text-[var(--brand-muted)]">
+            Revisa tu bandeja de entrada (y spam). El código vence en 10 minutos.
+          </p>
           <div className="space-y-2">
             <Label htmlFor="code">Código de 6 dígitos</Label>
             <Input
@@ -153,17 +149,16 @@ export function AuthForm({
           <Button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full bg-[var(--ocean-deep)]"
+            className="w-full rounded-full bg-[var(--brand-deep)]"
           >
             {loading ? "Verificando..." : "Entrar"}
           </Button>
           <button
             type="button"
-            className="w-full text-sm text-[var(--ocean-muted)] underline"
+            className="w-full text-sm text-[var(--brand-muted)] underline"
             onClick={() => {
               setStep("email");
               setCode("");
-              setDemoCode(null);
             }}
           >
             Usar otro correo

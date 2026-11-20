@@ -10,12 +10,21 @@ export type SessionUser = {
   isAdmin: boolean;
 };
 
+export class AuthConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AuthConfigError";
+  }
+}
+
 function getSessionSecret(): string {
-  return (
-    process.env.ADMIN_SESSION_SECRET ||
-    process.env.GOOGLE_CLIENT_SECRET ||
-    "brisa-dev-session"
-  );
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim();
+  if (!secret || secret.length < 32) {
+    throw new AuthConfigError(
+      "Falta ADMIN_SESSION_SECRET (mínimo 32 caracteres). Configúralo en los secretos del entorno.",
+    );
+  }
+  return secret;
 }
 
 export function normalizeEmail(email: string): string {
@@ -23,7 +32,7 @@ export function normalizeEmail(email: string): string {
 }
 
 export function getAdminEmails(): string[] {
-  const raw = process.env.ADMIN_ALLOWED_EMAILS || "admin@brisapacifico.pe";
+  const raw = process.env.ADMIN_ALLOWED_EMAILS || "";
   return raw
     .split(/[,;\s]+/)
     .map((item) => normalizeEmail(item))
@@ -31,11 +40,17 @@ export function getAdminEmails(): string[] {
 }
 
 export function isAdminEmail(email: string): boolean {
-  return getAdminEmails().includes(normalizeEmail(email));
+  const admins = getAdminEmails();
+  if (admins.length === 0) return false;
+  return admins.includes(normalizeEmail(email));
 }
 
 export function isGoogleAuthConfigured(): boolean {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
+export function isEmailAuthConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
 }
 
 function sign(value: string): string {
@@ -62,12 +77,12 @@ export function parseSessionToken(
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return null;
 
-  const expected = sign(payload);
-  const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-
   try {
+    const expected = sign(payload);
+    const a = Buffer.from(signature);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+
     const data = JSON.parse(
       Buffer.from(payload, "base64url").toString("utf8"),
     ) as {
@@ -90,8 +105,12 @@ export function parseSessionToken(
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
-  const jar = await cookies();
-  return parseSessionToken(jar.get(COOKIE_NAME)?.value);
+  try {
+    const jar = await cookies();
+    return parseSessionToken(jar.get(COOKIE_NAME)?.value);
+  } catch {
+    return null;
+  }
 }
 
 export async function setSessionCookie(user: SessionUser): Promise<void> {
@@ -125,7 +144,7 @@ export function createLoginCode(): string {
 }
 
 export function getAppOrigin(request: Request): string {
-  const envUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL;
+  const envUrl = process.env.APP_URL;
   if (envUrl) return envUrl.replace(/\/$/, "");
 
   const proto = request.headers.get("x-forwarded-proto") || "http";
@@ -134,4 +153,9 @@ export function getAppOrigin(request: Request): string {
     request.headers.get("host") ||
     "127.0.0.1:3451";
   return `${proto}://${host}`;
+}
+
+export function safeNextPath(next: string | null | undefined): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  return next;
 }
