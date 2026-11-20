@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addDays, format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ export function BookingForm({
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultOut = format(addDays(new Date(), 2), "yyyy-MM-dd");
 
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionName, setSessionName] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
+
   const [roomTypeId, setRoomTypeId] = useState(
     initialTypeId && roomTypes.some((type) => type.id === initialTypeId)
       ? initialTypeId
@@ -42,7 +47,6 @@ export function BookingForm({
   const [checkOut, setCheckOut] = useState(initialCheckOut || defaultOut);
   const [guests, setGuests] = useState(2);
   const [guestName, setGuestName] = useState("");
-  const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [guestDocument, setGuestDocument] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
@@ -51,6 +55,21 @@ export function BookingForm({
   const [cardName, setCardName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.user?.email) {
+          setSessionEmail(data.user.email);
+          setSessionName(data.user.name || "");
+          setGuestName((current) => current || data.user.name || "");
+        } else {
+          setSessionEmail(null);
+        }
+      })
+      .finally(() => setCheckingSession(false));
+  }, []);
 
   const selectedType = useMemo(
     () => roomTypes.find((type) => type.id === roomTypeId),
@@ -75,6 +94,9 @@ export function BookingForm({
     setLoading(true);
 
     try {
+      if (!sessionEmail) {
+        throw new Error("Inicia sesión con tu correo para continuar");
+      }
       if (paymentMethod === "tarjeta" && cardNumber.replace(/\s/g, "").length < 12) {
         throw new Error("Ingresa un número de tarjeta de demostración (12+ dígitos)");
       }
@@ -88,7 +110,6 @@ export function BookingForm({
           checkOut,
           guests,
           guestName,
-          guestEmail,
           guestPhone,
           guestDocument,
           specialRequests,
@@ -101,7 +122,10 @@ export function BookingForm({
         throw new Error(data.error || "No se pudo completar la reserva");
       }
 
-      router.push(`/reservar/exito?code=${data.reservation.code}`);
+      const receiptMode = data.receipt?.mode || "demo";
+      router.push(
+        `/reservar/exito?code=${data.reservation.code}&mail=${receiptMode}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
     } finally {
@@ -109,8 +133,37 @@ export function BookingForm({
     }
   }
 
+  if (checkingSession) {
+    return <p className="text-sm text-[var(--ocean-muted)]">Verificando acceso...</p>;
+  }
+
+  if (!sessionEmail) {
+    return (
+      <div className="space-y-4 rounded-2xl bg-[var(--ocean-mist)] p-6">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
+          Accede con tu correo
+        </h2>
+        <p className="text-sm text-[var(--ocean-muted)]">
+          Para reservar y recibir el comprobante, inicia sesión con Google o un
+          código enviado a tu email.
+        </p>
+        <Link
+          href="/acceso?next=/reservar"
+          className="inline-flex rounded-full bg-[var(--ocean-deep)] px-5 py-3 text-sm font-medium text-white"
+        >
+          Continuar con correo
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="space-y-8">
+      <div className="rounded-2xl bg-[var(--ocean-mist)] px-4 py-3 text-sm text-[var(--ocean-ink)]">
+        Reservando como <strong>{sessionName || sessionEmail}</strong> ·{" "}
+        {sessionEmail}. El comprobante se enviará a este correo.
+      </div>
+
       <section className="space-y-4">
         <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
           Fechas y habitación
@@ -185,17 +238,6 @@ export function BookingForm({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="guestEmail">Correo</Label>
-            <Input
-              id="guestEmail"
-              type="email"
-              value={guestEmail}
-              onChange={(event) => setGuestEmail(event.target.value)}
-              placeholder="maria@correo.com"
-              required
-            />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="guestPhone">Teléfono</Label>
             <Input
               id="guestPhone"
@@ -205,7 +247,7 @@ export function BookingForm({
               required
             />
           </div>
-          <div className="space-y-2 md:col-span-2">
+          <div className="space-y-2">
             <Label htmlFor="guestDocument">DNI / Pasaporte</Label>
             <Input
               id="guestDocument"
@@ -232,8 +274,8 @@ export function BookingForm({
           Pago
         </h2>
         <p className="text-sm text-[var(--ocean-muted)]">
-          El cobro online funciona en modo demostración: no se conecta a un
-          procesador real. Usa datos de prueba.
+          El cobro online funciona en modo demostración. El comprobante se envía
+          al correo de tu sesión.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {METHODS.map((method) => (
@@ -280,19 +322,6 @@ export function BookingForm({
             </div>
           </div>
         )}
-
-        {(paymentMethod === "yape" || paymentMethod === "plin") && (
-          <div className="rounded-2xl bg-[var(--ocean-mist)] p-4 text-sm text-[var(--ocean-ink)]">
-            Al confirmar, simularemos el pago con {PAYMENT_METHOD_LABELS[paymentMethod]}.
-            En producción aquí iría el QR o la pasarela real.
-          </div>
-        )}
-
-        {paymentMethod === "transferencia" && (
-          <div className="rounded-2xl bg-[var(--ocean-mist)] p-4 text-sm text-[var(--ocean-ink)]">
-            Cuenta demo BCP: 191-0000000-0-00 · CCI: 00219100000000000000
-          </div>
-        )}
       </section>
 
       <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ocean-line)] bg-white p-5 md:flex-row md:items-center md:justify-between">
@@ -310,7 +339,7 @@ export function BookingForm({
           disabled={loading}
           className="h-12 rounded-full bg-[var(--ocean-deep)] px-8 text-white hover:bg-[var(--ocean-ink)]"
         >
-          {loading ? "Procesando..." : "Confirmar reserva y pago"}
+          {loading ? "Procesando..." : "Confirmar y enviar comprobante"}
         </Button>
       </div>
 

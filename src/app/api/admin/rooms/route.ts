@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/auth";
 import { createRoom, updateRoom } from "@/lib/store";
 import type { RoomStatus } from "@/lib/types";
 

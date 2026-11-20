@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatMoney } from "@/lib/format";
+import { useRouter } from "next/navigation";
 import {
   PAYMENT_METHOD_LABELS,
   RESERVATION_STATUS_LABELS,
   ROOM_STATUS_LABELS,
+  type MailMessage,
   type Reservation,
   type ReservationStatus,
   type Room,
@@ -22,6 +24,7 @@ interface Snapshot {
   roomTypes: RoomType[];
   services: Service[];
   reservations: Reservation[];
+  mailOutbox: MailMessage[];
   stats: {
     totalRooms: number;
     availableRooms: number;
@@ -33,13 +36,19 @@ interface Snapshot {
 const ROOM_STATUSES = Object.keys(ROOM_STATUS_LABELS) as RoomStatus[];
 const RES_STATUSES = Object.keys(RESERVATION_STATUS_LABELS) as ReservationStatus[];
 
-export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) {
-  const [password, setPassword] = useState("");
-  const [authed, setAuthed] = useState(false);
-  const [loading, setLoading] = useState(false);
+export function AdminPanel({
+  adminEmail,
+  adminName,
+}: {
+  adminEmail: string;
+  adminName: string;
+}) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [tab, setTab] = useState<"habitaciones" | "tipos" | "reservas">("habitaciones");
+  const [tab, setTab] = useState<
+    "habitaciones" | "tipos" | "reservas" | "correos"
+  >("habitaciones");
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomFloor, setNewRoomFloor] = useState(1);
   const [newRoomTypeId, setNewRoomTypeId] = useState("");
@@ -47,8 +56,7 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
     if (response.status === 401) {
-      setAuthed(false);
-      setSnapshot(null);
+      router.push("/acceso?next=/admin");
       return;
     }
     if (!response.ok) {
@@ -56,38 +64,19 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
     }
     const data = (await response.json()) as Snapshot;
     setSnapshot(data);
-    setAuthed(true);
     setNewRoomTypeId((current) => current || data.roomTypes[0]?.id || "");
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    loadSummary().catch(() => setAuthed(false));
+    loadSummary().catch((err) =>
+      setError(err instanceof Error ? err.message : "Error"),
+    );
   }, [loadSummary]);
 
-  async function login(event: React.FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Acceso denegado");
-      await loadSummary();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error de acceso");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function logout() {
-    await fetch("/api/admin/login", { method: "DELETE" });
-    setAuthed(false);
-    setSnapshot(null);
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/");
+    router.refresh();
   }
 
   async function patchRoom(id: string, patch: Record<string, unknown>) {
@@ -144,46 +133,6 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
     await loadSummary();
   }
 
-  if (!authed) {
-    return (
-      <form
-        onSubmit={login}
-        className="mx-auto w-full max-w-md space-y-4 rounded-3xl bg-white/90 p-8 shadow-xl ring-1 ring-[var(--ocean-line)]"
-      >
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--ocean-ink)]">
-          Panel administrativo
-        </h1>
-        <p className="text-sm text-[var(--ocean-muted)]">
-          Actualiza estados de habitaciones, tipos, servicios y reservas.
-        </p>
-        {demoPasswordHint && (
-          <p className="rounded-xl bg-[var(--ocean-mist)] px-3 py-2 text-xs text-[var(--ocean-ink)]">
-            Demo local: contraseña <strong>{demoPasswordHint}</strong>. Configura
-            ADMIN_PASSWORD en producción.
-          </p>
-        )}
-        <div className="space-y-2">
-          <Label htmlFor="password">Contraseña</Label>
-          <Input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <Button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-full bg-[var(--ocean-deep)]"
-        >
-          {loading ? "Entrando..." : "Ingresar"}
-        </Button>
-      </form>
-    );
-  }
-
   if (!snapshot) {
     return <p className="text-center text-[var(--ocean-muted)]">Cargando panel...</p>;
   }
@@ -196,7 +145,7 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
             Administración
           </h1>
           <p className="mt-2 text-[var(--ocean-muted)]">
-            Gestiona inventario, tarifas y reservas en tiempo real.
+            Sesión admin: {adminName} · {adminEmail}
           </p>
         </div>
         <Button variant="outline" onClick={logout} className="rounded-full">
@@ -229,6 +178,7 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
             ["habitaciones", "Habitaciones"],
             ["tipos", "Tipos y servicios"],
             ["reservas", "Reservas"],
+            ["correos", "Comprobantes"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -554,6 +504,47 @@ export function AdminPanel({ demoPasswordHint }: { demoPasswordHint?: string }) 
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === "correos" && (
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--ocean-muted)]">
+            Códigos de acceso y comprobantes enviados. Si Resend no está
+            configurado, quedan aquí en modo demo.
+          </p>
+          {(snapshot.mailOutbox ?? []).length === 0 ? (
+            <div className="rounded-2xl bg-white p-8 text-center text-[var(--ocean-muted)] ring-1 ring-[var(--ocean-line)]">
+              Aún no hay correos registrados.
+            </div>
+          ) : (
+            (snapshot.mailOutbox ?? []).map((mail) => (
+              <article
+                key={mail.id}
+                className="rounded-2xl bg-white p-5 ring-1 ring-[var(--ocean-line)]"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-[var(--ocean-ink)]">
+                      {mail.subject}
+                    </p>
+                    <p className="text-sm text-[var(--ocean-muted)]">
+                      Para {mail.to} · {mail.mode}
+                      {mail.delivered ? " · enviado" : " · demo"}
+                    </p>
+                  </div>
+                  <p className="text-xs text-[var(--ocean-muted)]">
+                    {new Date(mail.createdAt).toLocaleString("es-PE", {
+                      timeZone: "America/Lima",
+                    })}
+                  </p>
+                </div>
+                <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-[var(--ocean-mist)] p-3 text-xs text-[var(--ocean-ink)]">
+                  {mail.text}
+                </pre>
+              </article>
+            ))
+          )}
         </div>
       )}
     </div>

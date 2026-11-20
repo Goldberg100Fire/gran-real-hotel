@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/auth";
 import { updateReservationStatus } from "@/lib/store";
 import type { ReservationStatus } from "@/lib/types";
 

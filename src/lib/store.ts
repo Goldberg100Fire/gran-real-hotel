@@ -5,6 +5,8 @@ import { Pool } from "pg";
 import { createSeedStore } from "./seed";
 import type {
   HotelStore,
+  LoginCode,
+  MailMessage,
   PaymentMethod,
   Reservation,
   ReservationStatus,
@@ -25,8 +27,17 @@ type GlobalStore = {
 
 const globalForStore = globalThis as typeof globalThis & GlobalStore;
 
+function normalizeStore(store: HotelStore): HotelStore {
+  return {
+    ...store,
+    reservations: store.reservations ?? [],
+    mailOutbox: store.mailOutbox ?? [],
+    loginCodes: store.loginCodes ?? [],
+  };
+}
+
 function cloneStore(store: HotelStore): HotelStore {
-  return structuredClone(store);
+  return structuredClone(normalizeStore(store));
 }
 
 async function ensureFileStore(): Promise<HotelStore> {
@@ -306,6 +317,95 @@ export async function listReservations(): Promise<Reservation[]> {
   return store.reservations;
 }
 
+export async function listReservationsByEmail(
+  email: string,
+): Promise<Reservation[]> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  return store.reservations.filter(
+    (reservation) => reservation.guestEmail === normalized,
+  );
+}
+
+export async function getReservationByCode(
+  code: string,
+): Promise<{ reservation: Reservation; roomType: RoomType } | null> {
+  const store = await readStore();
+  const reservation = store.reservations.find(
+    (item) => item.code.toUpperCase() === code.toUpperCase(),
+  );
+  if (!reservation) return null;
+  const roomType = store.roomTypes.find(
+    (type) => type.id === reservation.roomTypeId,
+  );
+  if (!roomType) return null;
+  return { reservation, roomType };
+}
+
+export async function saveLoginCode(email: string, code: string): Promise<LoginCode> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+  const entry: LoginCode = {
+    email: normalized,
+    code,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  };
+  store.loginCodes.push(entry);
+  await writeStore(store);
+  return entry;
+}
+
+export async function consumeLoginCode(
+  email: string,
+  code: string,
+): Promise<boolean> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  const entry = store.loginCodes.find((item) => item.email === normalized);
+  if (!entry) return false;
+  if (entry.expiresAt < new Date().toISOString()) {
+    store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+    await writeStore(store);
+    return false;
+  }
+  if (entry.code !== code.trim()) return false;
+  store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+  await writeStore(store);
+  return true;
+}
+
+export async function appendMailOutbox(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  mode: "resend" | "demo";
+  delivered: boolean;
+}): Promise<MailMessage> {
+  const store = await readStore();
+  const message: MailMessage = {
+    id: `mail-${crypto.randomUUID()}`,
+    to: input.to.trim().toLowerCase(),
+    subject: input.subject,
+    html: input.html,
+    text: input.text,
+    mode: input.mode,
+    delivered: input.delivered,
+    createdAt: new Date().toISOString(),
+  };
+  store.mailOutbox.unshift(message);
+  store.mailOutbox = store.mailOutbox.slice(0, 100);
+  await writeStore(store);
+  return message;
+}
+
+export async function listMailOutbox(): Promise<MailMessage[]> {
+  const store = await readStore();
+  return store.mailOutbox;
+}
+
 export async function updateReservationStatus(
   id: string,
   status: ReservationStatus,
@@ -449,6 +549,7 @@ export async function getAdminSnapshot() {
     roomTypes: store.roomTypes,
     services: store.services,
     reservations: store.reservations,
+    mailOutbox: store.mailOutbox,
     availability,
     stats: {
       totalRooms: store.rooms.length,

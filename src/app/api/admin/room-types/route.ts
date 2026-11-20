@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin } from "@/lib/auth";
 import { updateRoomType } from "@/lib/store";
 
 export async function PATCH(request: Request) {

@@ -1,32 +1,39 @@
 # Hotel Brisa Pacífico
 
-Sistema web de reservas hoteleras con disponibilidad en tiempo real, precios por tipo de habitación, captura de datos del huésped, pagos online en modo demostración y panel administrativo.
+Sistema web de reservas hoteleras con acceso por correo, disponibilidad, pagos demo, comprobante por email y panel administrativo.
 
 ## Qué incluye
 
-- **Sitio público**: inicio, catálogo de habitaciones, consulta por fechas, reserva y pago.
-- **Métodos de pago**: tarjeta, Yape, Plin, transferencia o pago en el hotel (simulados).
-- **Admin** (`/admin`): estados de habitaciones, tipos, servicios incluidos y gestión de reservas.
+- **Acceso por correo** (`/acceso`): Google OAuth o código de 6 dígitos al email.
+- **Reservas** (`/reservar`): requiere sesión; el comprobante se envía al correo de la sesión.
+- **Mis reservas** (`/mis-reservas`): historial del huésped autenticado.
+- **Admin** (`/admin`): solo correos listados en `ADMIN_ALLOWED_EMAILS`.
 
 ## Cómo ejecutar
 
 ```bash
 npm install
-npm run dev -- --port 3451
+npm run dev
 ```
 
-Abre `http://localhost:3451`.
+Abre el puerto del script (`3451`).
 
-### Panel admin (local)
+### Acceso local (demo)
 
-Contraseña demo: `brisa-admin`
+1. Ve a `/acceso`, ingresa un correo y usa el código demo que aparece en pantalla.
+2. Para admin, usa un correo de `ADMIN_ALLOWED_EMAILS` (por defecto `admin@brisapacifico.pe`).
 
-En producción define:
+### Variables
 
-- `ADMIN_PASSWORD` — acceso al panel
-- `ADMIN_SESSION_SECRET` — firma de la cookie de sesión (recomendado)
-- `DATABASE_URL` — Postgres (opcional en local; si no hay, se usa `data/hotel.json`)
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — login con Google
+- `ADMIN_ALLOWED_EMAILS` — correos admin separados por coma
+- `ADMIN_SESSION_SECRET` — firma de cookies
+- `RESEND_API_KEY` / `MAIL_FROM` — envío real de comprobantes (si faltan, modo demo en bandeja admin)
+- `DATABASE_URL` — Postgres opcional; si no hay, usa `data/hotel.json`
+
+En Google Cloud Console, agrega el redirect:
+`https://TU-DOMINIO/api/auth/google/callback` (y el local si pruebas OAuth).
 
 ## Stack
 
-Next.js, TypeScript, Tailwind CSS, shadcn/ui. Persistencia en archivo local o Postgres cuando existe `DATABASE_URL`.
+Next.js, TypeScript, Tailwind CSS, shadcn/ui.

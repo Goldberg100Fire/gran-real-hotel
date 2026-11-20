@@ -18,8 +18,11 @@ export function SiteFooter() {
           <Link href="/reservar" className="hover:text-white">
             Reservar
           </Link>
-          <Link href="/admin" className="hover:text-white">
-            Administración
+          <Link href="/acceso" className="hover:text-white">
+            Acceder
+          </Link>
+          <Link href="/mis-reservas" className="hover:text-white">
+            Mis reservas
           </Link>
         </div>
       </div>

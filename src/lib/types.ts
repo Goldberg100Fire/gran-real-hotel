@@ -63,11 +63,31 @@ export interface Reservation {
   createdAt: string;
 }
 
+export interface MailMessage {
+  id: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  mode: "resend" | "demo";
+  delivered: boolean;
+  createdAt: string;
+}
+
+export interface LoginCode {
+  email: string;
+  code: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface HotelStore {
   services: Service[];
   roomTypes: RoomType[];
   rooms: Room[];
   reservations: Reservation[];
+  mailOutbox: MailMessage[];
+  loginCodes: LoginCode[];
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

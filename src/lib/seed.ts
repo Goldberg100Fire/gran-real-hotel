@@ -137,5 +137,7 @@ export function createSeedStore(): HotelStore {
       { id: "room-402", number: "402", floor: 4, roomTypeId: "type-familiar", status: "disponible", notes: "" },
     ],
     reservations: [],
+    mailOutbox: [],
+    loginCodes: [],
   };
 }
