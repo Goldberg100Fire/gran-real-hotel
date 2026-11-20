@@ -1,0 +1,93 @@
+export type RoomStatus = "disponible" | "ocupada" | "mantenimiento" | "limpieza";
+
+export type PaymentMethod =
+  | "tarjeta"
+  | "yape"
+  | "plin"
+  | "transferencia"
+  | "pago_en_hotel";
+
+export type ReservationStatus =
+  | "pendiente"
+  | "confirmada"
+  | "cancelada"
+  | "completada";
+
+export type PaymentStatus = "pendiente" | "pagado" | "fallido" | "reembolsado";
+
+export interface Service {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
+export interface RoomType {
+  id: string;
+  name: string;
+  description: string;
+  basePrice: number;
+  maxGuests: number;
+  bedType: string;
+  imageGradient: string;
+  serviceIds: string[];
+}
+
+export interface Room {
+  id: string;
+  number: string;
+  floor: number;
+  roomTypeId: string;
+  status: RoomStatus;
+  notes: string;
+}
+
+export interface Reservation {
+  id: string;
+  code: string;
+  roomTypeId: string;
+  roomId: string | null;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  guestName: string;
+  guestEmail: string;
+  guestPhone: string;
+  guestDocument: string;
+  specialRequests: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  status: ReservationStatus;
+  nights: number;
+  totalAmount: number;
+  createdAt: string;
+}
+
+export interface HotelStore {
+  services: Service[];
+  roomTypes: RoomType[];
+  rooms: Room[];
+  reservations: Reservation[];
+}
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  tarjeta: "Tarjeta de crédito/débito",
+  yape: "Yape",
+  plin: "Plin",
+  transferencia: "Transferencia bancaria",
+  pago_en_hotel: "Pago en el hotel",
+};
+
+export const ROOM_STATUS_LABELS: Record<RoomStatus, string> = {
+  disponible: "Disponible",
+  ocupada: "Ocupada",
+  mantenimiento: "Mantenimiento",
+  limpieza: "Limpieza",
+};
+
+export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
+  pendiente: "Pendiente",
+  confirmada: "Confirmada",
+  cancelada: "Cancelada",
+  completada: "Completada",
+};
