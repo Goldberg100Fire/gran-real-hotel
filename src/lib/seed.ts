@@ -87,5 +87,7 @@ export function createSeedStore(): HotelStore {
     reservations: [],
     mailOutbox: [],
     loginCodes: [],
+    staffMembers: [],
+    guests: [],
   };
 }

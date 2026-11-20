@@ -42,7 +42,7 @@ export async function SiteHeader() {
                   href="/admin"
                   className="hidden text-white/75 transition hover:text-white md:inline"
                 >
-                  Admin
+                  Panel
                 </Link>
               )}
             </>

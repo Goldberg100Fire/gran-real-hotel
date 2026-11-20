@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import {
   AuthConfigError,
+  buildSessionUser,
   getAppOrigin,
-  isAdminEmail,
   isGoogleAuthConfigured,
+  isStaffRole,
   normalizeEmail,
   safeNextPath,
   setSessionCookie,
 } from "@/lib/auth";
+import { getGuestByEmail } from "@/lib/store";
 
 export async function GET(request: Request) {
   const origin = getAppOrigin(request);
@@ -78,11 +80,26 @@ export async function GET(request: Request) {
 
   try {
     const email = normalizeEmail(profile.email);
-    await setSessionCookie({
+    const user = await buildSessionUser({
       email,
       name: profile.name || email.split("@")[0],
-      isAdmin: isAdminEmail(email),
     });
+
+    if (!isStaffRole(user.role)) {
+      const guest = await getGuestByEmail(email);
+      if (guest) {
+        user.document = guest.document;
+        user.name = guest.name || user.name;
+      } else {
+        // Cliente nuevo por Google: debe completar documento antes de reservar
+        await setSessionCookie(user);
+        return NextResponse.redirect(
+          `${origin}/acceso?next=${encodeURIComponent(next)}&completar=documento`,
+        );
+      }
+    }
+
+    await setSessionCookie(user);
   } catch (error) {
     if (error instanceof AuthConfigError) {
       return NextResponse.redirect(`${origin}/acceso?error=sesion_no_configurada`);

@@ -10,18 +10,27 @@ export function AuthForm({
   nextPath = "/",
   googleEnabled = false,
   title = "Entra con tu correo",
-  subtitle = "Te enviamos un código para reservar y ver tus comprobantes.",
+  subtitle = "Te enviamos un código. Los clientes deben registrar su DNI o pasaporte.",
+  requireDocument = true,
+  completeDocumentOnly = false,
 }: {
   nextPath?: string;
   googleEnabled?: boolean;
   title?: string;
   subtitle?: string;
+  requireDocument?: boolean;
+  /** Solo completar documento (sesión ya existe, p. ej. Google). */
+  completeDocumentOnly?: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [document, setDocument] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"email" | "code" | "document">(
+    completeDocumentOnly ? "document" : "email",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,10 +67,37 @@ export function AuthForm({
       const response = await fetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, code, name }),
+        body: JSON.stringify({
+          email,
+          code,
+          name,
+          phone,
+          document: requireDocument ? document : undefined,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Código inválido");
+      router.push(nextPath);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function completeDocument(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/auth/complete-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document, phone, name }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo guardar");
       router.push(nextPath);
       router.refresh();
     } catch (err) {
@@ -83,16 +119,17 @@ export function AuthForm({
         <p className="mt-2 text-sm text-[var(--brand-muted)]">{subtitle}</p>
       </div>
 
-      {step === "email" ? (
+      {step === "email" && (
         <form onSubmit={requestCode} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Nombre</Label>
+            <Label htmlFor="name">Nombre completo</Label>
             <Input
               id="name"
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="María López"
               className="h-11 rounded-xl"
+              required
             />
           </div>
           <div className="space-y-2">
@@ -115,13 +152,13 @@ export function AuthForm({
             {loading ? "Enviando..." : "Enviar código al correo"}
           </Button>
         </form>
-      ) : (
+      )}
+
+      {step === "code" && (
         <form onSubmit={verifyCode} className="space-y-4">
           <p className="text-sm text-[var(--brand-muted)]">
-            Enviamos un código a <strong className="text-[var(--brand-ink)]">{email}</strong>
-          </p>
-          <p className="text-xs text-[var(--brand-muted)]">
-            Revisa bandeja de entrada y spam. Válido 10 minutos.
+            Enviamos un código a{" "}
+            <strong className="text-[var(--brand-ink)]">{email}</strong>
           </p>
           <div className="space-y-2">
             <Label htmlFor="code">Código de 6 dígitos</Label>
@@ -135,6 +172,34 @@ export function AuthForm({
               className="h-11 rounded-xl tracking-[0.3em]"
             />
           </div>
+          {requireDocument && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="document">DNI / pasaporte / carné (clientes)</Label>
+                <Input
+                  id="document"
+                  value={document}
+                  onChange={(event) => setDocument(event.target.value)}
+                  placeholder="Ej. 71234567"
+                  className="h-11 rounded-xl"
+                />
+                <p className="text-xs text-[var(--brand-muted)]">
+                  Obligatorio para huéspedes: un documento = una cuenta. El personal
+                  autorizado del hotel puede dejarlo vacío.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Teléfono</Label>
+                <Input
+                  id="phone"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="978 113 578"
+                  className="h-11 rounded-xl"
+                />
+              </div>
+            </>
+          )}
           <Button
             type="submit"
             disabled={loading}
@@ -155,7 +220,54 @@ export function AuthForm({
         </form>
       )}
 
-      {googleEnabled && (
+      {step === "document" && (
+        <form onSubmit={completeDocument} className="space-y-4">
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+            Para reservar debes registrar tu documento de identidad. Una persona =
+            una cuenta.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="doc-name">Nombre completo</Label>
+            <Input
+              id="doc-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="h-11 rounded-xl"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="doc-id">DNI / pasaporte / carné</Label>
+            <Input
+              id="doc-id"
+              value={document}
+              onChange={(event) => setDocument(event.target.value)}
+              placeholder="Ej. 71234567"
+              className="h-11 rounded-xl"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="doc-phone">Teléfono</Label>
+            <Input
+              id="doc-phone"
+              value={phone}
+              onChange={(event) => setPhone(event.target.value)}
+              className="h-11 rounded-xl"
+              required
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="h-11 w-full rounded-full bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
+          >
+            {loading ? "Guardando..." : "Guardar y continuar"}
+          </Button>
+        </form>
+      )}
+
+      {googleEnabled && step === "email" && (
         <>
           <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-[var(--brand-muted)]">
             <span className="h-px flex-1 bg-[var(--brand-line)]" />

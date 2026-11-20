@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireStaff } from "@/lib/auth";
 import { updateReservationStatus } from "@/lib/store";
 import type { ReservationStatus } from "@/lib/types";
 
@@ -11,7 +11,7 @@ const STATUSES: ReservationStatus[] = [
 ];
 
 export async function PATCH(request: Request) {
-  if (!(await requireAdmin())) {
+  if (!(await requireStaff())) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 

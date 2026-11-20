@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { AdminPanel } from "@/components/hotel/admin-panel";
 import { PageHero } from "@/components/hotel/page-hero";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isStaffRole } from "@/lib/auth";
+import { USER_ROLE_LABELS } from "@/lib/types";
 
 export const metadata = {
   title: "Admin",
@@ -12,7 +13,7 @@ export default async function AdminPage() {
   if (!user) {
     redirect("/acceso?next=/admin");
   }
-  if (!user.isAdmin) {
+  if (!isStaffRole(user.role)) {
     redirect("/mis-reservas");
   }
 
@@ -20,11 +21,15 @@ export default async function AdminPage() {
     <main>
       <PageHero
         title="Administración"
-        subtitle={`${user.name} · panel del hotel`}
+        subtitle={`${USER_ROLE_LABELS[user.role]} · ${user.name}`}
         imageSrc="/hotel/doble.png"
       />
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <AdminPanel adminEmail={user.email} adminName={user.name} />
+        <AdminPanel
+          adminEmail={user.email}
+          adminName={user.name}
+          role={user.role}
+        />
       </div>
     </main>
   );

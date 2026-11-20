@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { canCreateRooms, requireStaff } from "@/lib/auth";
 import { createRoom, updateRoom } from "@/lib/store";
 import type { RoomStatus } from "@/lib/types";
 
@@ -11,8 +11,15 @@ const STATUSES: RoomStatus[] = [
 ];
 
 export async function POST(request: Request) {
-  if (!(await requireAdmin())) {
+  const user = await requireStaff();
+  if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+  if (!canCreateRooms(user.role)) {
+    return NextResponse.json(
+      { error: "Solo el jefe puede agregar habitaciones" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -33,7 +40,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!(await requireAdmin())) {
+  const user = await requireStaff();
+  if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
@@ -44,13 +52,18 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Falta el id" }, { status: 400 });
     }
 
+    // Empleados: solo estado y notas. Jefe: también tipo/número/piso.
+    const isOwner = canCreateRooms(user.role);
     const room = await updateRoom(id, {
       status: STATUSES.includes(body.status) ? body.status : undefined,
       notes: typeof body.notes === "string" ? body.notes : undefined,
       roomTypeId:
-        typeof body.roomTypeId === "string" ? body.roomTypeId : undefined,
-      number: typeof body.number === "string" ? body.number : undefined,
-      floor: typeof body.floor === "number" ? body.floor : undefined,
+        isOwner && typeof body.roomTypeId === "string"
+          ? body.roomTypeId
+          : undefined,
+      number:
+        isOwner && typeof body.number === "string" ? body.number : undefined,
+      floor: isOwner && typeof body.floor === "number" ? body.floor : undefined,
     });
 
     return NextResponse.json({ room });

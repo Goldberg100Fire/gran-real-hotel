@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, requireUser } from "@/lib/auth";
+import { requireStaff, requireUser } from "@/lib/auth";
+import { validateGuestDocument } from "@/lib/document";
 import { sendReservationReceipt } from "@/lib/mail";
 import {
   createReservation,
@@ -17,7 +18,7 @@ const PAYMENT_METHODS: PaymentMethod[] = [
 ];
 
 export async function GET() {
-  if (!(await requireAdmin())) {
+  if (!(await requireStaff())) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
@@ -70,6 +71,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const docCheck = validateGuestDocument(String(guestDocument));
+    if (!docCheck.ok) {
+      return NextResponse.json({ error: docCheck.error }, { status: 400 });
+    }
+
+    // Sesión de cliente: el documento debe coincidir con el vinculado a la cuenta
+    if (user.role === "cliente" && user.document && user.document !== docCheck.document) {
+      return NextResponse.json(
+        {
+          error:
+            "El documento no coincide con el de tu cuenta. Un cliente solo puede usar un documento.",
+        },
+        { status: 400 },
+      );
+    }
+
     const reservation = await createReservation({
       roomTypeId,
       checkIn,
@@ -78,7 +95,7 @@ export async function POST(request: Request) {
       guestName: String(guestName),
       guestEmail: user.email,
       guestPhone: String(guestPhone),
-      guestDocument: String(guestDocument),
+      guestDocument: docCheck.document,
       specialRequests: specialRequests ? String(specialRequests) : "",
       paymentMethod,
     });

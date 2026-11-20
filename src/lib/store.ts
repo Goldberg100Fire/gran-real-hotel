@@ -4,7 +4,9 @@ import { differenceInCalendarDays, parseISO } from "date-fns";
 import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
 import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
+import { validateGuestDocument } from "./document";
 import type {
+  GuestProfile,
   HotelStore,
   LoginCode,
   MailMessage,
@@ -15,6 +17,8 @@ import type {
   RoomStatus,
   RoomType,
   Service,
+  StaffMember,
+  StaffRole,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -32,6 +36,8 @@ function normalizeStore(store: HotelStore): HotelStore {
     reservations: store.reservations ?? [],
     mailOutbox: store.mailOutbox ?? [],
     loginCodes: store.loginCodes ?? [],
+    staffMembers: store.staffMembers ?? [],
+    guests: store.guests ?? [],
   };
 }
 
@@ -68,6 +74,8 @@ async function readFirestoreStore(): Promise<HotelStore> {
     reservationsSnap,
     loginCodesSnap,
     mailSnap,
+    staffSnap,
+    guestsSnap,
   ] = await Promise.all([
     db.collection(COLLECTIONS.services).get(),
     db.collection(COLLECTIONS.roomTypes).get(),
@@ -75,6 +83,8 @@ async function readFirestoreStore(): Promise<HotelStore> {
     db.collection(COLLECTIONS.reservations).orderBy("createdAt", "desc").get(),
     db.collection(COLLECTIONS.loginCodes).get(),
     db.collection(COLLECTIONS.mailOutbox).orderBy("createdAt", "desc").limit(100).get(),
+    db.collection(COLLECTIONS.staffMembers).get(),
+    db.collection(COLLECTIONS.guests).get(),
   ]);
 
   if (servicesSnap.empty || roomTypesSnap.empty || roomsSnap.empty) {
@@ -90,6 +100,8 @@ async function readFirestoreStore(): Promise<HotelStore> {
     reservations: reservationsSnap.docs.map((doc) => doc.data() as Reservation),
     loginCodes: loginCodesSnap.docs.map((doc) => doc.data() as LoginCode),
     mailOutbox: mailSnap.docs.map((doc) => doc.data() as MailMessage),
+    staffMembers: staffSnap.docs.map((doc) => doc.data() as StaffMember),
+    guests: guestsSnap.docs.map((doc) => doc.data() as GuestProfile),
   });
 }
 
@@ -144,6 +156,15 @@ async function writeFirestoreStore(store: HotelStore): Promise<void> {
   }
   for (const mail of store.mailOutbox.slice(0, 100)) {
     batch.set(db.collection(COLLECTIONS.mailOutbox).doc(mail.id), mail);
+  }
+  for (const member of store.staffMembers) {
+    batch.set(
+      db.collection(COLLECTIONS.staffMembers).doc(member.email),
+      member,
+    );
+  }
+  for (const guest of store.guests) {
+    batch.set(db.collection(COLLECTIONS.guests).doc(guest.document), guest);
   }
 
   await batch.commit();
@@ -290,6 +311,15 @@ export async function createReservation(input: {
     throw new Error("La fecha de salida debe ser posterior al ingreso");
   }
 
+  const guestEmail = input.guestEmail.trim().toLowerCase();
+  const guest = await bindGuestIdentity({
+    email: guestEmail,
+    name: input.guestName,
+    phone: input.guestPhone,
+    document: input.guestDocument,
+    store,
+  });
+
   const availability = await getAvailability(input.checkIn, input.checkOut);
   const slot = availability.find((item) => item.roomType.id === input.roomTypeId);
   if (!slot || slot.availableCount < 1) {
@@ -333,10 +363,10 @@ export async function createReservation(input: {
     checkIn: input.checkIn,
     checkOut: input.checkOut,
     guests: input.guests,
-    guestName: input.guestName.trim(),
-    guestEmail: input.guestEmail.trim().toLowerCase(),
-    guestPhone: input.guestPhone.trim(),
-    guestDocument: input.guestDocument.trim(),
+    guestName: guest.name,
+    guestEmail: guest.email,
+    guestPhone: guest.phone,
+    guestDocument: guest.document,
     specialRequests: input.specialRequests?.trim() ?? "",
     paymentMethod: input.paymentMethod,
     paymentStatus,
@@ -583,6 +613,160 @@ export async function listServices(): Promise<Service[]> {
   return store.services;
 }
 
+/**
+ * Vincula correo ↔ documento de forma única.
+ * Un documento solo puede usarse con un correo; un correo solo con un documento.
+ */
+export async function bindGuestIdentity(input: {
+  email: string;
+  name: string;
+  phone: string;
+  document: string;
+  store?: HotelStore;
+}): Promise<GuestProfile> {
+  const validated = validateGuestDocument(input.document);
+  if (!validated.ok) throw new Error(validated.error);
+
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  const phone = input.phone.trim();
+  const document = validated.document;
+  const now = new Date().toISOString();
+
+  const ownsStore = !input.store;
+  const store = input.store ?? (await readStore());
+
+  const byDocument = store.guests.find((guest) => guest.document === document);
+  const byEmail = store.guests.find((guest) => guest.email === email);
+
+  if (byDocument && byDocument.email !== email) {
+    throw new Error(
+      "Este documento ya está registrado con otro correo. Usa el correo original o contacta al hotel.",
+    );
+  }
+  if (byEmail && byEmail.document !== document) {
+    throw new Error(
+      "Este correo ya está vinculado a otro documento de identidad. No se permiten varias cuentas.",
+    );
+  }
+
+  // También revisar reservas históricas (migración / datos previos)
+  const conflictDoc = store.reservations.find(
+    (reservation) =>
+      reservation.guestDocument.replace(/[\s.\-_/]/g, "").toUpperCase() ===
+        document && reservation.guestEmail !== email,
+  );
+  if (conflictDoc) {
+    throw new Error(
+      "Este documento ya aparece en reservas con otro correo. Contacta al hotel.",
+    );
+  }
+  const conflictEmail = store.reservations.find(
+    (reservation) =>
+      reservation.guestEmail === email &&
+      reservation.guestDocument.replace(/[\s.\-_/]/g, "").toUpperCase() !==
+        document &&
+      reservation.guestDocument.trim() !== "",
+  );
+  if (conflictEmail && !byEmail) {
+    throw new Error(
+      "Este correo ya reservó con otro documento. Usa el mismo DNI/pasaporte.",
+    );
+  }
+
+  let guest: GuestProfile;
+  if (byDocument || byEmail) {
+    guest = byDocument || byEmail!;
+    guest.name = name || guest.name;
+    guest.phone = phone || guest.phone;
+    guest.updatedAt = now;
+  } else {
+    guest = {
+      document,
+      email,
+      name,
+      phone,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.guests.push(guest);
+  }
+
+  if (ownsStore) {
+    await writeStore(store);
+  }
+  return guest;
+}
+
+export async function getGuestByEmail(
+  email: string,
+): Promise<GuestProfile | null> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  return store.guests.find((guest) => guest.email === normalized) ?? null;
+}
+
+export async function getStaffByEmail(
+  email: string,
+): Promise<StaffMember | null> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  return (
+    store.staffMembers.find((member) => member.email === normalized) ?? null
+  );
+}
+
+export async function listStaffMembers(): Promise<StaffMember[]> {
+  const store = await readStore();
+  return [...store.staffMembers].sort((a, b) => a.email.localeCompare(b.email));
+}
+
+export async function upsertStaffMember(input: {
+  email: string;
+  name: string;
+  role: StaffRole;
+  active?: boolean;
+  createdBy: string;
+}): Promise<StaffMember> {
+  const store = await readStore();
+  const email = input.email.trim().toLowerCase();
+  if (!email.includes("@")) throw new Error("Correo de personal inválido");
+
+  const existing = store.staffMembers.find((member) => member.email === email);
+  if (existing) {
+    existing.name = input.name.trim() || existing.name;
+    existing.role = input.role;
+    if (typeof input.active === "boolean") existing.active = input.active;
+    await writeStore(store);
+    return existing;
+  }
+
+  const member: StaffMember = {
+    email,
+    name: input.name.trim() || email.split("@")[0],
+    role: input.role,
+    active: input.active ?? true,
+    createdAt: new Date().toISOString(),
+    createdBy: input.createdBy.trim().toLowerCase(),
+  };
+  store.staffMembers.push(member);
+  await writeStore(store);
+  return member;
+}
+
+export async function setStaffActive(
+  email: string,
+  active: boolean,
+): Promise<StaffMember> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  const member = store.staffMembers.find((item) => item.email === normalized);
+  if (!member) throw new Error("Personal no encontrado");
+  member.active = active;
+  await writeStore(store);
+  return member;
+}
+
 export async function getAdminSnapshot() {
   const store = await readStore();
   const availability = await getAvailability();
@@ -593,6 +777,8 @@ export async function getAdminSnapshot() {
     services: store.services,
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,
+    staffMembers: store.staffMembers,
+    guests: store.guests,
     availability,
     storage: getStorageMode(),
     hotel: HOTEL,
@@ -605,6 +791,8 @@ export async function getAdminSnapshot() {
         (reservation) =>
           reservation.status === "confirmada" || reservation.status === "pendiente",
       ).length,
+      guestsRegistered: store.guests.length,
+      staffActive: store.staffMembers.filter((member) => member.active).length,
     },
   };
 }

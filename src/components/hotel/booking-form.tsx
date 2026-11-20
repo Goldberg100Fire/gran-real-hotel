@@ -30,6 +30,8 @@ export function BookingForm({
 
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
+  const [sessionDocument, setSessionDocument] = useState<string | null>(null);
+  const [needsDocument, setNeedsDocument] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [paymentsReady, setPaymentsReady] = useState(false);
 
@@ -63,13 +65,19 @@ export function BookingForm({
           setSessionEmail(auth.user.email);
           setSessionName(auth.user.name || "");
           setGuestName((current) => current || auth.user.name || "");
+          const doc = auth.user.document ? String(auth.user.document) : "";
+          setSessionDocument(doc || null);
+          setNeedsDocument(auth.user.role === "cliente" && !doc);
+          if (doc) setGuestDocument(doc);
         } else {
           setSessionEmail(null);
+          setNeedsDocument(false);
         }
         setPaymentsReady(Boolean(config.mercadopagoConfigured));
       })
       .catch(() => {
         setSessionEmail(null);
+        setNeedsDocument(false);
         setPaymentsReady(false);
       })
       .finally(() => {
@@ -183,21 +191,26 @@ export function BookingForm({
     );
   }
 
-  if (!sessionEmail) {
+  if (!sessionEmail || needsDocument) {
     return (
       <div className="space-y-4 rounded-2xl bg-[var(--brand-mist)] p-6">
         <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
-          Accede con tu correo
+          {needsDocument ? "Completa tu documento" : "Accede con tu correo"}
         </h2>
         <p className="text-sm text-[var(--brand-muted)]">
-          Para reservar y recibir el comprobante, inicia sesión con un código
-          enviado a tu email.
+          {needsDocument
+            ? "Debes vincular tu DNI, carné o pasaporte a la cuenta antes de reservar."
+            : "Para reservar necesitas correo verificado y documento de identidad único."}
         </p>
         <Link
-          href="/acceso?next=/reservar"
+          href={
+            needsDocument
+              ? "/acceso?next=/reservar&completar=documento"
+              : "/acceso?next=/reservar"
+          }
           className="inline-flex rounded-full bg-[var(--brand-deep)] px-5 py-3 text-sm font-semibold text-white"
         >
-          Continuar con correo
+          {needsDocument ? "Registrar documento" : "Continuar con correo"}
         </Link>
       </div>
     );
@@ -298,10 +311,19 @@ export function BookingForm({
             <Input
               id="guestDocument"
               value={guestDocument}
-              onChange={(event) => setGuestDocument(event.target.value)}
+              onChange={(event) => {
+                if (!sessionDocument) setGuestDocument(event.target.value);
+              }}
               placeholder="12345678"
               required
+              readOnly={Boolean(sessionDocument)}
+              className={sessionDocument ? "bg-[var(--brand-mist)]" : undefined}
             />
+            {sessionDocument && (
+              <p className="text-xs text-[var(--brand-muted)]">
+                Documento vinculado a tu cuenta (no se puede cambiar).
+              </p>
+            )}
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label htmlFor="specialRequests">Pedidos especiales (opcional)</Label>

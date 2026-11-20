@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import {
   AuthConfigError,
-  isAdminEmail,
+  buildSessionUser,
+  isStaffRole,
   normalizeEmail,
   setSessionCookie,
 } from "@/lib/auth";
-import { consumeLoginCode } from "@/lib/store";
+import { validateGuestDocument } from "@/lib/document";
+import { bindGuestIdentity, consumeLoginCode, getGuestByEmail } from "@/lib/store";
 
 export async function POST(request: Request) {
   try {
@@ -13,6 +15,8 @@ export async function POST(request: Request) {
     const email = normalizeEmail(String(body.email ?? ""));
     const code = String(body.code ?? "").trim();
     const name = String(body.name ?? "").trim();
+    const documentRaw = String(body.document ?? "").trim();
+    const phone = String(body.phone ?? "").trim();
 
     if (!email || !code) {
       return NextResponse.json(
@@ -29,13 +33,47 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = {
+    const user = await buildSessionUser({
       email,
       name: name || email.split("@")[0],
-      isAdmin: isAdminEmail(email),
-    };
-    await setSessionCookie(user);
+    });
 
+    // Clientes: documento de identidad obligatorio y único
+    if (!isStaffRole(user.role)) {
+      const existing = await getGuestByEmail(email);
+      let document = documentRaw;
+
+      if (!document && existing) {
+        document = existing.document;
+      }
+
+      if (!document) {
+        return NextResponse.json(
+          {
+            error:
+              "Los clientes deben registrar su DNI, carné o pasaporte. Así tu cuenta queda vinculada a una sola identidad.",
+          },
+          { status: 400 },
+        );
+      }
+
+      const validated = validateGuestDocument(document);
+      if (!validated.ok) {
+        return NextResponse.json({ error: validated.error }, { status: 400 });
+      }
+
+      const guest = await bindGuestIdentity({
+        email,
+        name: name || existing?.name || email.split("@")[0],
+        phone: phone || existing?.phone || "",
+        document: validated.document,
+      });
+
+      user.name = guest.name || user.name;
+      user.document = guest.document;
+    }
+
+    await setSessionCookie(user);
     return NextResponse.json({ user });
   } catch (error) {
     if (error instanceof AuthConfigError) {
@@ -43,6 +81,6 @@ export async function POST(request: Request) {
     }
     const message =
       error instanceof Error ? error.message : "No se pudo verificar";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

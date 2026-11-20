@@ -111,6 +111,8 @@ Respuesta esperada: `"storage":"firestore"` y los 3 tipos de habitación.
 | `reservations` | Reservas (se crean al reservar) |
 | `loginCodes` | Códigos de acceso por correo |
 | `mailOutbox` | Historial de correos enviados |
+| `staffMembers` | Personal autorizado (empleado/jefe) |
+| `guests` | Clientes: documento ↔ correo único |
 
 ## Si algo falla
 

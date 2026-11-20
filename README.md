@@ -6,9 +6,16 @@ Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilid
 
 - Sitio público con logo, fotos reales y estilo café/dorado de la marca
 - Consulta de habitaciones Simple, Matrimonial y Doble
-- Reserva con acceso por código al correo (comprobante por email)
-- Panel admin para habitaciones, tipos y reservas
+- Reserva con acceso por código al correo + documento de identidad único
+- Roles: **jefe** (dueño) y **empleado** (personal autorizado)
+- Panel admin con permisos por rol
 - Pago en línea (Mercado Pago / Yape) preparado para activar después
+
+## Seguridad y roles
+
+- **Jefe:** correos en `ADMIN_ALLOWED_EMAILS`. Precios, habitaciones, personal y comprobantes.
+- **Empleado:** el jefe los autoriza en Admin → Personal. Estados de habitación y reservas.
+- **Cliente:** correo + DNI/pasaporte. Un documento = una cuenta (no se reutiliza en otro correo).
 
 ## Stack
 

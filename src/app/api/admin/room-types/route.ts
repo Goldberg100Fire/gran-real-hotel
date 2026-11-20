@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { canEditPricing, requireStaff } from "@/lib/auth";
 import { updateRoomType } from "@/lib/store";
 
 export async function PATCH(request: Request) {
-  if (!(await requireAdmin())) {
+  const user = await requireStaff();
+  if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+  if (!canEditPricing(user.role)) {
+    return NextResponse.json(
+      { error: "Solo el jefe puede editar tipos y precios" },
+      { status: 403 },
+    );
   }
 
   try {

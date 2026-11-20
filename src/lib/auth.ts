@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createHmac, randomInt, timingSafeEqual } from "crypto";
+import type { StaffMember, StaffRole, UserRole } from "@/lib/types";
 
 const COOKIE_NAME = "hotel_user_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -7,7 +8,11 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 export type SessionUser = {
   email: string;
   name: string;
+  role: UserRole;
+  /** true si es jefe o empleado (acceso al panel) */
   isAdmin: boolean;
+  /** Documento vinculado (solo clientes) */
+  document?: string;
 };
 
 export class AuthConfigError extends Error {
@@ -31,18 +36,41 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-export function getAdminEmails(): string[] {
-  const raw = process.env.ADMIN_ALLOWED_EMAILS || "";
+/** Correos del dueño/jefe definidos en secretos (arranque seguro). */
+export function getOwnerEmails(): string[] {
+  const raw =
+    process.env.ADMIN_OWNER_EMAILS || process.env.ADMIN_ALLOWED_EMAILS || "";
   return raw
     .split(/[,;\s]+/)
     .map((item) => normalizeEmail(item))
     .filter(Boolean);
 }
 
+export function isOwnerEmail(email: string): boolean {
+  const owners = getOwnerEmails();
+  if (owners.length === 0) return false;
+  return owners.includes(normalizeEmail(email));
+}
+
+/** @deprecated usar isOwnerEmail / resolveUserRole */
 export function isAdminEmail(email: string): boolean {
-  const admins = getAdminEmails();
-  if (admins.length === 0) return false;
-  return admins.includes(normalizeEmail(email));
+  return isOwnerEmail(email);
+}
+
+export function isStaffRole(role: UserRole): boolean {
+  return role === "jefe" || role === "empleado";
+}
+
+export function canManageStaff(role: UserRole): boolean {
+  return role === "jefe";
+}
+
+export function canEditPricing(role: UserRole): boolean {
+  return role === "jefe";
+}
+
+export function canCreateRooms(role: UserRole): boolean {
+  return role === "jefe";
 }
 
 export function isGoogleAuthConfigured(): boolean {
@@ -63,11 +91,19 @@ export function createSessionToken(user: SessionUser): string {
     JSON.stringify({
       email: normalizeEmail(user.email),
       name: user.name,
-      isAdmin: user.isAdmin,
+      role: user.role,
+      document: user.document || undefined,
       exp: expiresAt,
     }),
   ).toString("base64url");
   return `${payload}.${sign(payload)}`;
+}
+
+function coerceRole(value: unknown): UserRole {
+  if (value === "jefe" || value === "empleado" || value === "cliente") {
+    return value;
+  }
+  return "cliente";
 }
 
 export function parseSessionToken(
@@ -88,26 +124,100 @@ export function parseSessionToken(
     ) as {
       email: string;
       name: string;
-      isAdmin: boolean;
+      role?: UserRole;
+      isAdmin?: boolean;
+      document?: string;
       exp: number;
     };
     if (!data.email || !Number.isFinite(data.exp) || data.exp < Date.now()) {
       return null;
     }
+
+    // Compat: tokens viejos con isAdmin sin role
+    let role = coerceRole(data.role);
+    if (!data.role && data.isAdmin) {
+      role = isOwnerEmail(data.email) ? "jefe" : "empleado";
+    }
+
     return {
       email: normalizeEmail(data.email),
       name: data.name || data.email,
-      isAdmin: Boolean(data.isAdmin) && isAdminEmail(data.email),
+      role,
+      isAdmin: isStaffRole(role),
+      document: data.document ? String(data.document) : undefined,
     };
   } catch {
     return null;
   }
 }
 
+/**
+ * Resuelve el rol real al iniciar sesión (no confiar solo en la cookie).
+ * Dueños del env > staff activo en base > cliente.
+ */
+export async function resolveUserRole(
+  email: string,
+  staffLookup?: (email: string) => Promise<StaffMember | null>,
+): Promise<UserRole> {
+  const normalized = normalizeEmail(email);
+  if (isOwnerEmail(normalized)) return "jefe";
+
+  if (staffLookup) {
+    const member = await staffLookup(normalized);
+    if (member?.active) return member.role;
+  } else {
+    const { getStaffByEmail } = await import("@/lib/store");
+    const member = await getStaffByEmail(normalized);
+    if (member?.active) return member.role;
+  }
+
+  return "cliente";
+}
+
+export async function buildSessionUser(input: {
+  email: string;
+  name: string;
+  document?: string;
+}): Promise<SessionUser> {
+  const email = normalizeEmail(input.email);
+  const role = await resolveUserRole(email);
+  return {
+    email,
+    name: input.name || email.split("@")[0],
+    role,
+    isAdmin: isStaffRole(role),
+    document: role === "cliente" ? input.document : undefined,
+  };
+}
+
 export async function getSessionUser(): Promise<SessionUser | null> {
   try {
     const jar = await cookies();
-    return parseSessionToken(jar.get(COOKIE_NAME)?.value);
+    const parsed = parseSessionToken(jar.get(COOKIE_NAME)?.value);
+    if (!parsed) return null;
+
+    // Revalidar rol de personal (revocación inmediata si se desactiva)
+    const liveRole = await resolveUserRole(parsed.email);
+    if (isStaffRole(parsed.role) && liveRole === "cliente") {
+      return null;
+    }
+
+    if (isStaffRole(liveRole)) {
+      return {
+        email: parsed.email,
+        name: parsed.name,
+        role: liveRole,
+        isAdmin: true,
+      };
+    }
+
+    return {
+      email: parsed.email,
+      name: parsed.name,
+      role: "cliente",
+      isAdmin: false,
+      document: parsed.document,
+    };
   } catch {
     return null;
   }
@@ -133,9 +243,22 @@ export async function requireUser(): Promise<SessionUser | null> {
   return getSessionUser();
 }
 
-export async function requireAdmin(): Promise<SessionUser | null> {
+/** Personal del hotel (jefe o empleado). */
+export async function requireStaff(): Promise<SessionUser | null> {
   const user = await getSessionUser();
-  if (!user?.isAdmin) return null;
+  if (!user || !isStaffRole(user.role)) return null;
+  return user;
+}
+
+/** @deprecated usar requireStaff */
+export async function requireAdmin(): Promise<SessionUser | null> {
+  return requireStaff();
+}
+
+/** Solo el jefe / dueño. */
+export async function requireOwner(): Promise<SessionUser | null> {
+  const user = await getSessionUser();
+  if (!user || user.role !== "jefe") return null;
   return user;
 }
 
@@ -158,4 +281,10 @@ export function getAppOrigin(request: Request): string {
 export function safeNextPath(next: string | null | undefined): string {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
   return next;
+}
+
+export function assertStaffRole(role: string): asserts role is StaffRole {
+  if (role !== "jefe" && role !== "empleado") {
+    throw new Error("Rol de personal inválido");
+  }
 }

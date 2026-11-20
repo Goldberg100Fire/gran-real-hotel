@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/hotel/auth-form";
 import { PageHero } from "@/components/hotel/page-hero";
-import { getSessionUser, isGoogleAuthConfigured } from "@/lib/auth";
+import { getSessionUser, isGoogleAuthConfigured, isStaffRole } from "@/lib/auth";
 
 export const metadata = {
   title: "Acceso",
@@ -10,14 +10,17 @@ export const metadata = {
 export default async function AccesoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{ next?: string; error?: string; completar?: string }>;
 }) {
   const params = await searchParams;
   const user = await getSessionUser();
   const nextPath =
     params.next && params.next.startsWith("/") ? params.next : "/mis-reservas";
+  const needsDocument =
+    params.completar === "documento" ||
+    (user && !isStaffRole(user.role) && !user.document);
 
-  if (user) {
+  if (user && !needsDocument) {
     redirect(nextPath);
   }
 
@@ -31,8 +34,8 @@ export default async function AccesoPage({
   return (
     <main>
       <PageHero
-        title="Acceso"
-        subtitle="Ingresa con tu correo. Te enviamos un código para reservar y ver tus comprobantes."
+        title="Acceso seguro"
+        subtitle="Clientes con documento único. Personal del hotel solo con correo autorizado."
         imageSrc="/hotel/simple.png"
       />
       <section className="mx-auto max-w-md px-6 py-12">
@@ -43,9 +46,18 @@ export default async function AccesoPage({
         )}
         <AuthForm
           nextPath={nextPath}
-          googleEnabled={isGoogleAuthConfigured()}
-          title="Entra con tu correo"
-          subtitle="Recibirás un código de acceso en tu email. Así también te llega el comprobante de reserva."
+          googleEnabled={isGoogleAuthConfigured() && !needsDocument}
+          completeDocumentOnly={Boolean(needsDocument && user)}
+          title={
+            needsDocument && user
+              ? "Completa tu identidad"
+              : "Entra con tu correo"
+          }
+          subtitle={
+            needsDocument && user
+              ? "Registra tu DNI, carné o pasaporte para vincular la cuenta."
+              : "Huéspedes: correo + documento. Personal: solo correos autorizados por el jefe."
+          }
         />
       </section>
     </main>

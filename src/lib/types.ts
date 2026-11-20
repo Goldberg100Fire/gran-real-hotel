@@ -15,6 +15,30 @@ export type ReservationStatus =
 
 export type PaymentStatus = "pendiente" | "pagado" | "fallido" | "reembolsado";
 
+/** Roles del sistema: clientes vs personal autorizado del hotel. */
+export type UserRole = "cliente" | "empleado" | "jefe";
+
+export type StaffRole = "empleado" | "jefe";
+
+export interface StaffMember {
+  email: string;
+  name: string;
+  role: StaffRole;
+  active: boolean;
+  createdAt: string;
+  createdBy: string;
+}
+
+/** Perfil de huésped: un documento ↔ un correo. */
+export interface GuestProfile {
+  document: string;
+  email: string;
+  name: string;
+  phone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Service {
   id: string;
   name: string;
@@ -89,6 +113,8 @@ export interface HotelStore {
   reservations: Reservation[];
   mailOutbox: MailMessage[];
   loginCodes: LoginCode[];
+  staffMembers: StaffMember[];
+  guests: GuestProfile[];
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -111,4 +137,15 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   confirmada: "Confirmada",
   cancelada: "Cancelada",
   completada: "Completada",
+};
+
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  cliente: "Cliente",
+  empleado: "Empleado",
+  jefe: "Jefe / dueño",
+};
+
+export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  empleado: "Empleado",
+  jefe: "Jefe / dueño",
 };

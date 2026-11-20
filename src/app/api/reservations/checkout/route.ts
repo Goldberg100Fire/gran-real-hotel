@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAppOrigin, requireUser } from "@/lib/auth";
+import { validateGuestDocument } from "@/lib/document";
 import { HOTEL } from "@/lib/hotel-info";
 import {
   createCheckoutPreference,
@@ -53,6 +54,30 @@ export async function POST(request: Request) {
       );
     }
 
+    const docCheck = validateGuestDocument(String(guestDocument));
+    if (!docCheck.ok) {
+      return NextResponse.json({ error: docCheck.error }, { status: 400 });
+    }
+    if (user.role === "cliente" && !user.document) {
+      return NextResponse.json(
+        { error: "Completa tu documento de identidad antes de pagar" },
+        { status: 400 },
+      );
+    }
+    if (
+      user.role === "cliente" &&
+      user.document &&
+      user.document !== docCheck.document
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "El documento no coincide con el de tu cuenta. Un cliente = un documento.",
+        },
+        { status: 400 },
+      );
+    }
+
     const reservation = await createReservation({
       roomTypeId: String(roomTypeId),
       checkIn: String(checkIn),
@@ -61,7 +86,7 @@ export async function POST(request: Request) {
       guestName: String(guestName),
       guestEmail: user.email,
       guestPhone: String(guestPhone),
-      guestDocument: String(guestDocument),
+      guestDocument: docCheck.document,
       specialRequests: specialRequests ? String(specialRequests) : "",
       paymentMethod: "yape",
       paymentStatus: "pendiente",

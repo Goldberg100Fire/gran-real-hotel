@@ -53,4 +53,6 @@ export const COLLECTIONS = {
   reservations: "reservations",
   loginCodes: "loginCodes",
   mailOutbox: "mailOutbox",
+  staffMembers: "staffMembers",
+  guests: "guests",
 } as const;
