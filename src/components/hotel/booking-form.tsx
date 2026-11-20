@@ -57,8 +57,14 @@ export function BookingForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((response) => response.json())
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+
+    fetch("/api/auth/me", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("No se pudo verificar la sesión");
+        return response.json();
+      })
       .then((data) => {
         if (data.user?.email) {
           setSessionEmail(data.user.email);
@@ -68,7 +74,18 @@ export function BookingForm({
           setSessionEmail(null);
         }
       })
-      .finally(() => setCheckingSession(false));
+      .catch(() => {
+        setSessionEmail(null);
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        setCheckingSession(false);
+      });
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   const selectedType = useMemo(
