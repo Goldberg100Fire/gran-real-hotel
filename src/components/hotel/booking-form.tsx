@@ -31,7 +31,7 @@ export function BookingForm({
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
   const [checkingSession, setCheckingSession] = useState(true);
-  const [stripeReady, setStripeReady] = useState(false);
+  const [paymentsReady, setPaymentsReady] = useState(false);
 
   const [roomTypeId, setRoomTypeId] = useState(
     initialTypeId && roomTypes.some((type) => type.id === initialTypeId)
@@ -66,11 +66,11 @@ export function BookingForm({
         } else {
           setSessionEmail(null);
         }
-        setStripeReady(Boolean(config.stripeConfigured));
+        setPaymentsReady(Boolean(config.mercadopagoConfigured));
       })
       .catch(() => {
         setSessionEmail(null);
-        setStripeReady(false);
+        setPaymentsReady(false);
       })
       .finally(() => {
         window.clearTimeout(timeout);
@@ -109,9 +109,9 @@ export function BookingForm({
       if (!sessionEmail) {
         throw new Error("Inicia sesión con tu correo para continuar");
       }
-      if (!stripeReady) {
+      if (!paymentsReady) {
         throw new Error(
-          "Los pagos aún no están configurados. Falta Stripe en los secretos.",
+          "Los pagos aún no están configurados. Falta Mercado Pago en los secretos.",
         );
       }
 
@@ -136,7 +136,7 @@ export function BookingForm({
       }
 
       if (!data.checkoutUrl) {
-        throw new Error("Stripe no devolvió la URL de pago");
+        throw new Error("Mercado Pago no devolvió la URL de pago");
       }
 
       window.location.href = data.checkoutUrl;
@@ -178,10 +178,10 @@ export function BookingForm({
         correo.
       </div>
 
-      {!stripeReady && (
+      {!paymentsReady && (
         <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Stripe aún no está configurado. Puedes llenar el formulario, pero el
-          pago no iniciará hasta agregar las claves.
+          Mercado Pago aún no está configurado. Puedes llenar el formulario, pero
+          el pago (Yape/tarjeta) no iniciará hasta agregar las claves.
         </p>
       )}
 
@@ -294,7 +294,7 @@ export function BookingForm({
         <div>
           <p className="text-sm text-[var(--brand-muted)]">
             {Math.max(nights, 1)} noche{nights === 1 ? "" : "s"} ·{" "}
-            {selectedType?.name} · pago con tarjeta (Stripe)
+            {selectedType?.name} · Mercado Pago (Yape / tarjeta)
           </p>
           <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--brand-ink)]">
             {formatMoney(total)}
@@ -302,10 +302,10 @@ export function BookingForm({
         </div>
         <Button
           type="submit"
-          disabled={loading || !stripeReady}
+          disabled={loading || !paymentsReady}
           className="h-12 rounded-full bg-[var(--brand-deep)] px-8 text-white hover:bg-[var(--brand-ink)]"
         >
-          {loading ? "Redirigiendo a Stripe..." : "Pagar y confirmar reserva"}
+          {loading ? "Abriendo Mercado Pago..." : "Pagar con Yape / tarjeta"}
         </Button>
       </div>
 

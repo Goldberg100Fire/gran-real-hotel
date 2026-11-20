@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { getAppOrigin, requireUser } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
-import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import {
+  createCheckoutPreference,
+  isMercadoPagoConfigured,
+} from "@/lib/mercadopago";
 import { createReservation, getCatalog } from "@/lib/store";
 
 export async function POST(request: Request) {
   try {
-    if (!isStripeConfigured()) {
+    if (!isMercadoPagoConfigured()) {
       return NextResponse.json(
         {
           error:
-            "Pagos no configurados. Agrega STRIPE_SECRET_KEY y STRIPE_PUBLISHABLE_KEY.",
+            "Pagos no configurados. Agrega MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY.",
         },
         { status: 503 },
       );
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
       guestPhone: String(guestPhone),
       guestDocument: String(guestDocument),
       specialRequests: specialRequests ? String(specialRequests) : "",
-      paymentMethod: "tarjeta",
+      paymentMethod: "yape",
       paymentStatus: "pendiente",
       status: "pendiente",
     });
@@ -75,37 +78,33 @@ export async function POST(request: Request) {
     }
 
     const origin = getAppOrigin(request);
-    const stripe = getStripe();
-    const amountCents = Math.round(reservation.totalAmount * 100);
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer_email: user.email,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "pen",
-            unit_amount: amountCents,
-            product_data: {
-              name: `${HOTEL.name} · ${roomType.name}`,
-              description: `${reservation.checkIn} → ${reservation.checkOut} · ${reservation.nights} noche(s) · Código ${reservation.code}`,
-            },
-          },
-        },
-      ],
-      metadata: {
-        reservationId: reservation.id,
-        reservationCode: reservation.code,
-      },
-      success_url: `${origin}/reservar/exito?code=${reservation.code}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/reservar?cancelado=1&tipo=${reservation.roomTypeId}`,
+    const preference = await createCheckoutPreference({
+      title: `${HOTEL.name} · ${roomType.name}`,
+      description: `${reservation.checkIn} → ${reservation.checkOut} · ${reservation.nights} noche(s) · ${reservation.code}`,
+      amount: reservation.totalAmount,
+      reservationId: reservation.id,
+      reservationCode: reservation.code,
+      payerEmail: user.email,
+      successUrl: `${origin}/reservar/exito?code=${reservation.code}`,
+      pendingUrl: `${origin}/reservar/exito?code=${reservation.code}&pending=1`,
+      failureUrl: `${origin}/reservar?cancelado=1&tipo=${reservation.roomTypeId}`,
+      notificationUrl: `${origin}/api/mercadopago/webhook`,
     });
+
+    const checkoutUrl =
+      preference.init_point || preference.sandbox_init_point || null;
+
+    if (!checkoutUrl) {
+      return NextResponse.json(
+        { error: "Mercado Pago no devolvió URL de pago" },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({
       reservation,
-      checkoutUrl: session.url,
-      sessionId: session.id,
+      checkoutUrl,
+      preferenceId: preference.id,
     });
   } catch (error) {
     const message =

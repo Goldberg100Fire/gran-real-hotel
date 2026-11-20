@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { isEmailAuthConfigured, isGoogleAuthConfigured } from "@/lib/auth";
 import { isFirestoreConfigured } from "@/lib/firebase";
-import { isStripeConfigured } from "@/lib/stripe";
+import { isMercadoPagoConfigured } from "@/lib/mercadopago";
 
 export async function GET() {
   return NextResponse.json({
     googleEnabled: isGoogleAuthConfigured(),
     emailAuthEnabled: isEmailAuthConfigured(),
     firestoreConfigured: isFirestoreConfigured(),
-    stripeConfigured: isStripeConfigured(),
-    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+    mercadopagoConfigured: isMercadoPagoConfigured(),
+    publicKey: process.env.MERCADOPAGO_PUBLIC_KEY || null,
   });
 }
