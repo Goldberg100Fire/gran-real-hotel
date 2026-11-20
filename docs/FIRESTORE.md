@@ -59,13 +59,9 @@ Del JSON vas a usar:
 - el formulario seguro de Cursor, **o**
 - un archivo local `.env.local` (nunca se sube a Git).
 
-Para `FIREBASE_PRIVATE_KEY`, deja los `\n` como vienen en el JSON, entre comillas:
-
-```env
-FIREBASE_PROJECT_ID=gran-real-hotel
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@gran-real-hotel.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
-```
+Para `FIREBASE_PRIVATE_KEY`, copia el campo `private_key` del JSON de la service account
+tal cual (incluye los `\n`) y pégalo **solo** en `.env.local` o en los secretos de Cursor.
+No lo escribas en README, docs ni en `.env.example`.
 
 ## 5. Cargar el inventario del hotel
 
