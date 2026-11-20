@@ -9,11 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney } from "@/lib/format";
-import {
-  PAYMENT_METHOD_LABELS,
-  type PaymentMethod,
-  type RoomType,
-} from "@/lib/types";
+import type { RoomType } from "@/lib/types";
 
 interface BookingFormProps {
   roomTypes: RoomType[];
@@ -21,8 +17,6 @@ interface BookingFormProps {
   initialCheckIn?: string;
   initialCheckOut?: string;
 }
-
-const METHODS = Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[];
 
 export function BookingForm({
   roomTypes,
@@ -37,6 +31,7 @@ export function BookingForm({
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
   const [checkingSession, setCheckingSession] = useState(true);
+  const [stripeReady, setStripeReady] = useState(false);
 
   const [roomTypeId, setRoomTypeId] = useState(
     initialTypeId && roomTypes.some((type) => type.id === initialTypeId)
@@ -50,9 +45,6 @@ export function BookingForm({
   const [guestPhone, setGuestPhone] = useState("");
   const [guestDocument, setGuestDocument] = useState("");
   const [specialRequests, setSpecialRequests] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("tarjeta");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardName, setCardName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,22 +52,25 @@ export function BookingForm({
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
 
-    fetch("/api/auth/me", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("No se pudo verificar la sesión");
-        return response.json();
-      })
-      .then((data) => {
-        if (data.user?.email) {
-          setSessionEmail(data.user.email);
-          setSessionName(data.user.name || "");
-          setGuestName((current) => current || data.user.name || "");
+    Promise.all([
+      fetch("/api/auth/me", { signal: controller.signal }).then((r) => r.json()),
+      fetch("/api/config/public", { signal: controller.signal }).then((r) =>
+        r.json(),
+      ),
+    ])
+      .then(([auth, config]) => {
+        if (auth.user?.email) {
+          setSessionEmail(auth.user.email);
+          setSessionName(auth.user.name || "");
+          setGuestName((current) => current || auth.user.name || "");
         } else {
           setSessionEmail(null);
         }
+        setStripeReady(Boolean(config.stripeConfigured));
       })
       .catch(() => {
         setSessionEmail(null);
+        setStripeReady(false);
       })
       .finally(() => {
         window.clearTimeout(timeout);
@@ -114,11 +109,13 @@ export function BookingForm({
       if (!sessionEmail) {
         throw new Error("Inicia sesión con tu correo para continuar");
       }
-      if (paymentMethod === "tarjeta" && cardNumber.replace(/\s/g, "").length < 12) {
-        throw new Error("Ingresa un número de tarjeta de demostración (12+ dígitos)");
+      if (!stripeReady) {
+        throw new Error(
+          "Los pagos aún no están configurados. Falta Stripe en los secretos.",
+        );
       }
 
-      const response = await fetch("/api/reservations", {
+      const response = await fetch("/api/reservations/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -130,43 +127,42 @@ export function BookingForm({
           guestPhone,
           guestDocument,
           specialRequests,
-          paymentMethod,
         }),
       });
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "No se pudo completar la reserva");
+        throw new Error(data.error || "No se pudo iniciar el pago");
       }
 
-      const receiptMode = data.receipt?.mode || "demo";
-      router.push(
-        `/reservar/exito?code=${data.reservation.code}&mail=${receiptMode}`,
-      );
+      if (!data.checkoutUrl) {
+        throw new Error("Stripe no devolvió la URL de pago");
+      }
+
+      window.location.href = data.checkoutUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
-    } finally {
       setLoading(false);
     }
   }
 
   if (checkingSession) {
-    return <p className="text-sm text-[var(--ocean-muted)]">Verificando acceso...</p>;
+    return <p className="text-sm text-[var(--brand-muted)]">Verificando acceso...</p>;
   }
 
   if (!sessionEmail) {
     return (
-      <div className="space-y-4 rounded-2xl bg-[var(--ocean-mist)] p-6">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
+      <div className="space-y-4 rounded-2xl bg-[var(--brand-mist)] p-6">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
           Accede con tu correo
         </h2>
-        <p className="text-sm text-[var(--ocean-muted)]">
+        <p className="text-sm text-[var(--brand-muted)]">
           Para reservar y recibir el comprobante, inicia sesión con Google o un
           código enviado a tu email.
         </p>
         <Link
           href="/acceso?next=/reservar"
-          className="inline-flex rounded-full bg-[var(--ocean-deep)] px-5 py-3 text-sm font-medium text-white"
+          className="inline-flex rounded-full bg-[var(--brand-deep)] px-5 py-3 text-sm font-medium text-white"
         >
           Continuar con correo
         </Link>
@@ -176,13 +172,21 @@ export function BookingForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-8">
-      <div className="rounded-2xl bg-[var(--ocean-mist)] px-4 py-3 text-sm text-[var(--ocean-ink)]">
+      <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm text-[var(--brand-ink)]">
         Reservando como <strong>{sessionName || sessionEmail}</strong> ·{" "}
-        {sessionEmail}. El comprobante se enviará a este correo.
+        {sessionEmail}. Tras pagar con Stripe se enviará el comprobante a este
+        correo.
       </div>
 
+      {!stripeReady && (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Stripe aún no está configurado. Puedes llenar el formulario, pero el
+          pago no iniciará hasta agregar las claves.
+        </p>
+      )}
+
       <section className="space-y-4">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
           Fechas y habitación
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -190,7 +194,7 @@ export function BookingForm({
             <Label htmlFor="roomType">Tipo de habitación</Label>
             <select
               id="roomType"
-              className="h-10 w-full rounded-lg border border-[var(--ocean-line)] bg-white px-3 text-sm"
+              className="h-10 w-full rounded-lg border border-[var(--brand-line)] bg-white px-3 text-sm"
               value={roomTypeId}
               onChange={(event) => setRoomTypeId(event.target.value)}
               required
@@ -240,7 +244,7 @@ export function BookingForm({
       </section>
 
       <section className="space-y-4">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
           Datos del huésped
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -286,77 +290,22 @@ export function BookingForm({
         </div>
       </section>
 
-      <section className="space-y-4">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
-          Pago
-        </h2>
-        <p className="text-sm text-[var(--ocean-muted)]">
-          El cobro online funciona en modo demostración. El comprobante se envía
-          al correo de tu sesión.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {METHODS.map((method) => (
-            <label
-              key={method}
-              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm transition ${
-                paymentMethod === method
-                  ? "border-[var(--ocean-deep)] bg-[var(--ocean-mist)]"
-                  : "border-[var(--ocean-line)] bg-white"
-              }`}
-            >
-              <input
-                type="radio"
-                name="paymentMethod"
-                value={method}
-                checked={paymentMethod === method}
-                onChange={() => setPaymentMethod(method)}
-              />
-              {PAYMENT_METHOD_LABELS[method]}
-            </label>
-          ))}
-        </div>
-
-        {paymentMethod === "tarjeta" && (
-          <div className="grid gap-4 rounded-2xl bg-[var(--ocean-mist)] p-4 md:grid-cols-2">
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="cardName">Nombre en la tarjeta</Label>
-              <Input
-                id="cardName"
-                value={cardName}
-                onChange={(event) => setCardName(event.target.value)}
-                placeholder="MARIA LOPEZ"
-              />
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="cardNumber">Número de tarjeta (demo)</Label>
-              <Input
-                id="cardNumber"
-                value={cardNumber}
-                onChange={(event) => setCardNumber(event.target.value)}
-                placeholder="4111 1111 1111 1111"
-                inputMode="numeric"
-              />
-            </div>
-          </div>
-        )}
-      </section>
-
-      <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ocean-line)] bg-white p-5 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm text-[var(--ocean-muted)]">
+          <p className="text-sm text-[var(--brand-muted)]">
             {Math.max(nights, 1)} noche{nights === 1 ? "" : "s"} ·{" "}
-            {selectedType?.name}
+            {selectedType?.name} · pago con tarjeta (Stripe)
           </p>
-          <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--ocean-ink)]">
+          <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--brand-ink)]">
             {formatMoney(total)}
           </p>
         </div>
         <Button
           type="submit"
-          disabled={loading}
-          className="h-12 rounded-full bg-[var(--ocean-deep)] px-8 text-white hover:bg-[var(--ocean-ink)]"
+          disabled={loading || !stripeReady}
+          className="h-12 rounded-full bg-[var(--brand-deep)] px-8 text-white hover:bg-[var(--brand-ink)]"
         >
-          {loading ? "Procesando..." : "Confirmar y enviar comprobante"}
+          {loading ? "Redirigiendo a Stripe..." : "Pagar y confirmar reserva"}
         </Button>
       </div>
 
