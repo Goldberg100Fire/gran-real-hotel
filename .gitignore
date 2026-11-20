@@ -43,3 +43,8 @@ next-env.d.ts
 
 # local hotel data store
 /data/hotel.json
+
+# local secrets / uploads
+uploads/
+**/*firebase-adminsdk*.json
+.env.local
