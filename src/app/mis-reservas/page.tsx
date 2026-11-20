@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogoutButton } from "@/components/hotel/logout-button";
-import { SiteHeader } from "@/components/hotel/site-header";
+import { PageHero } from "@/components/hotel/page-hero";
 import { getSessionUser } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getCatalog, listReservationsByEmail } from "@/lib/store";
@@ -25,25 +25,17 @@ export default async function MisReservasPage() {
 
   return (
     <main>
-      <div className="relative h-44 bg-[linear-gradient(120deg,#0b3d4a,#1a6b7a)]">
-        <SiteHeader />
-        <div className="relative mx-auto flex h-full max-w-6xl items-end px-6 pb-8">
-          <div>
-            <h1 className="font-[family-name:var(--font-display)] text-4xl text-white">
-              Mis reservas
-            </h1>
-            <p className="mt-2 text-white/80">
-              Sesión: {user.name} · {user.email}
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        title="Mis reservas"
+        subtitle={`${user.name} · ${user.email}`}
+        imageSrc="/hotel/matrimonial-2.png"
+      />
 
       <section className="mx-auto max-w-4xl space-y-4 px-6 py-12">
         <div className="flex flex-wrap gap-3">
           <Link
             href="/reservar"
-            className="rounded-full bg-[var(--ocean-deep)] px-5 py-2 text-sm text-white"
+            className="rounded-full bg-[var(--brand-deep)] px-5 py-2.5 text-sm font-semibold text-white"
           >
             Nueva reserva
           </Link>
@@ -51,13 +43,13 @@ export default async function MisReservasPage() {
         </div>
 
         {reservations.length === 0 ? (
-          <div className="rounded-3xl bg-white p-8 text-center ring-1 ring-[var(--ocean-line)]">
-            <p className="text-[var(--ocean-muted)]">
+          <div className="rounded-[1.5rem] bg-white p-10 text-center ring-1 ring-[var(--brand-line)]">
+            <p className="text-[var(--brand-muted)]">
               Aún no tienes reservas con este correo.
             </p>
             <Link
               href="/habitaciones"
-              className="mt-4 inline-block text-[var(--ocean-deep)] underline"
+              className="mt-4 inline-block font-semibold text-[var(--brand-deep)] underline underline-offset-4"
             >
               Ver habitaciones
             </Link>
@@ -70,43 +62,43 @@ export default async function MisReservasPage() {
             return (
               <article
                 key={reservation.id}
-                className="rounded-3xl bg-white p-6 ring-1 ring-[var(--ocean-line)]"
+                className="rounded-[1.5rem] bg-white p-6 shadow-[0_18px_50px_-30px_rgba(44,36,30,0.4)] ring-1 ring-[var(--brand-line)]"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--ocean-muted)]">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--brand-gold)]">
                       {RESERVATION_STATUS_LABELS[reservation.status]}
                     </p>
-                    <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-ink)]">
+                    <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
                       {reservation.code}
                     </h2>
-                    <p className="mt-1 text-sm text-[var(--ocean-muted)]">
+                    <p className="mt-1 text-sm text-[var(--brand-muted)]">
                       {typeName}
                     </p>
                   </div>
-                  <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--ocean-deep)]">
+                  <p className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-deep)]">
                     {formatMoney(reservation.totalAmount)}
                   </p>
                 </div>
-                <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
                   <div>
-                    <dt className="text-[var(--ocean-muted)]">Ingreso</dt>
-                    <dd>{formatDate(reservation.checkIn)}</dd>
+                    <dt className="text-[var(--brand-muted)]">Ingreso</dt>
+                    <dd className="font-medium">{formatDate(reservation.checkIn)}</dd>
                   </div>
                   <div>
-                    <dt className="text-[var(--ocean-muted)]">Salida</dt>
-                    <dd>{formatDate(reservation.checkOut)}</dd>
+                    <dt className="text-[var(--brand-muted)]">Salida</dt>
+                    <dd className="font-medium">{formatDate(reservation.checkOut)}</dd>
                   </div>
                   <div>
-                    <dt className="text-[var(--ocean-muted)]">Pago</dt>
-                    <dd>
+                    <dt className="text-[var(--brand-muted)]">Pago</dt>
+                    <dd className="font-medium">
                       {PAYMENT_METHOD_LABELS[reservation.paymentMethod]} ·{" "}
                       {reservation.paymentStatus}
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[var(--ocean-muted)]">Huéspedes</dt>
-                    <dd>{reservation.guests}</dd>
+                    <dt className="text-[var(--brand-muted)]">Huéspedes</dt>
+                    <dd className="font-medium">{reservation.guests}</dd>
                   </div>
                 </dl>
               </article>

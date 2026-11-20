@@ -100,7 +100,18 @@ export function BookingForm({
 
   const total = selectedType ? selectedType.basePrice * Math.max(nights, 1) : 0;
 
-  async function onSubmit(event: React.FormEvent) {
+  const payload = {
+    roomTypeId,
+    checkIn,
+    checkOut,
+    guests,
+    guestName,
+    guestPhone,
+    guestDocument,
+    specialRequests,
+  };
+
+  async function confirmAtHotel(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setLoading(true);
@@ -109,34 +120,54 @@ export function BookingForm({
       if (!sessionEmail) {
         throw new Error("Inicia sesión con tu correo para continuar");
       }
+
+      const response = await fetch("/api/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          paymentMethod: "pago_en_hotel",
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "No se pudo crear la reserva");
+      }
+
+      const code = data.reservation?.code as string | undefined;
+      router.push(code ? `/reservar/exito?code=${encodeURIComponent(code)}` : "/mis-reservas");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error inesperado");
+      setLoading(false);
+    }
+  }
+
+  async function payOnline() {
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (!sessionEmail) {
+        throw new Error("Inicia sesión con tu correo para continuar");
+      }
       if (!paymentsReady) {
-        throw new Error(
-          "Los pagos aún no están configurados. Falta Mercado Pago en los secretos.",
-        );
+        throw new Error("El pago en línea se activará más adelante.");
       }
 
       const response = await fetch("/api/reservations/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomTypeId,
-          checkIn,
-          checkOut,
-          guests,
-          guestName,
-          guestPhone,
-          guestDocument,
-          specialRequests,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "No se pudo iniciar el pago");
       }
-
       if (!data.checkoutUrl) {
-        throw new Error("Mercado Pago no devolvió la URL de pago");
+        throw new Error("No se generó la URL de pago");
       }
 
       window.location.href = data.checkoutUrl;
@@ -147,22 +178,24 @@ export function BookingForm({
   }
 
   if (checkingSession) {
-    return <p className="text-sm text-[var(--brand-muted)]">Verificando acceso...</p>;
+    return (
+      <p className="text-sm text-[var(--brand-muted)]">Verificando acceso...</p>
+    );
   }
 
   if (!sessionEmail) {
     return (
       <div className="space-y-4 rounded-2xl bg-[var(--brand-mist)] p-6">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
           Accede con tu correo
         </h2>
         <p className="text-sm text-[var(--brand-muted)]">
-          Para reservar y recibir el comprobante, inicia sesión con Google o un
-          código enviado a tu email.
+          Para reservar y recibir el comprobante, inicia sesión con un código
+          enviado a tu email.
         </p>
         <Link
           href="/acceso?next=/reservar"
-          className="inline-flex rounded-full bg-[var(--brand-deep)] px-5 py-3 text-sm font-medium text-white"
+          className="inline-flex rounded-full bg-[var(--brand-deep)] px-5 py-3 text-sm font-semibold text-white"
         >
           Continuar con correo
         </Link>
@@ -171,22 +204,14 @@ export function BookingForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-8">
+    <form onSubmit={confirmAtHotel} className="space-y-8">
       <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm text-[var(--brand-ink)]">
         Reservando como <strong>{sessionName || sessionEmail}</strong> ·{" "}
-        {sessionEmail}. Tras pagar con Stripe se enviará el comprobante a este
-        correo.
+        {sessionEmail}. Te enviaremos el comprobante a este correo.
       </div>
 
-      {!paymentsReady && (
-        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Mercado Pago aún no está configurado. Puedes llenar el formulario, pero
-          el pago (Yape/tarjeta) no iniciará hasta agregar las claves.
-        </p>
-      )}
-
       <section className="space-y-4">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
           Fechas y habitación
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -244,7 +269,7 @@ export function BookingForm({
       </section>
 
       <section className="space-y-4">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
           Datos del huésped
         </h2>
         <div className="grid gap-4 md:grid-cols-2">
@@ -294,19 +319,31 @@ export function BookingForm({
         <div>
           <p className="text-sm text-[var(--brand-muted)]">
             {Math.max(nights, 1)} noche{nights === 1 ? "" : "s"} ·{" "}
-            {selectedType?.name} · Mercado Pago (Yape / tarjeta)
+            {selectedType?.name} · pago en el hotel
           </p>
-          <p className="font-[family-name:var(--font-display)] text-3xl text-[var(--brand-ink)]">
+          <p className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
             {formatMoney(total)}
           </p>
         </div>
-        <Button
-          type="submit"
-          disabled={loading || !paymentsReady}
-          className="h-12 rounded-full bg-[var(--brand-deep)] px-8 text-white hover:bg-[var(--brand-ink)]"
-        >
-          {loading ? "Abriendo Mercado Pago..." : "Pagar con Yape / tarjeta"}
-        </Button>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <Button
+            type="submit"
+            disabled={loading}
+            className="h-12 rounded-full bg-[var(--brand-deep)] px-8 font-semibold text-white hover:bg-[var(--brand-ink)]"
+          >
+            {loading ? "Confirmando..." : "Confirmar reserva"}
+          </Button>
+          {paymentsReady && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={payOnline}
+              className="text-sm font-medium text-[var(--brand-muted)] underline underline-offset-4"
+            >
+              O pagar ahora con Yape / tarjeta
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (

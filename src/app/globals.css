@@ -115,8 +115,8 @@
 }
 
 @keyframes drift {
-  from { transform: translateY(0); }
-  to { transform: translateY(-10px); }
+  from { transform: translate3d(0, 0, 0) scale(1.05); }
+  to { transform: translate3d(0, -12px, 0) scale(1.08); }
 }
 
 @keyframes reveal-up {

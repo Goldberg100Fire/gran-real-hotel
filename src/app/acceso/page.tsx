@@ -1,7 +1,7 @@
-import { AuthForm } from "@/components/hotel/auth-form";
-import { SiteHeader } from "@/components/hotel/site-header";
-import { getSessionUser, isGoogleAuthConfigured } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { AuthForm } from "@/components/hotel/auth-form";
+import { PageHero } from "@/components/hotel/page-hero";
+import { getSessionUser, isGoogleAuthConfigured } from "@/lib/auth";
 
 export const metadata = {
   title: "Acceso",
@@ -23,25 +23,29 @@ export default async function AccesoPage({
 
   const errorMessage =
     params.error === "google_no_configurado"
-      ? "Google aún no está configurado en este entorno. Usa el código por correo."
+      ? "Google no está disponible aquí. Usa el código por correo."
       : params.error
-        ? "No se pudo completar el acceso con Google. Prueba el código por correo."
+        ? "No se pudo completar el acceso con Google. Usa el código por correo."
         : null;
 
   return (
     <main>
-      <div className="relative h-40 bg-[linear-gradient(135deg,#06262f,#0b3d4a_60%,#2a9d8f)]">
-        <SiteHeader />
-      </div>
+      <PageHero
+        title="Acceso"
+        subtitle="Ingresa con tu correo. Te enviamos un código para reservar y ver tus comprobantes."
+        imageSrc="/hotel/simple.png"
+      />
       <section className="mx-auto max-w-md px-6 py-12">
         {errorMessage && (
-          <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
             {errorMessage}
           </p>
         )}
         <AuthForm
           nextPath={nextPath}
           googleEnabled={isGoogleAuthConfigured()}
+          title="Entra con tu correo"
+          subtitle="Recibirás un código de acceso en tu email. Así también te llega el comprobante de reserva."
         />
       </section>
     </main>

@@ -58,7 +58,7 @@ export function RoomTypeCard({
       </div>
       <div className="space-y-4 p-6">
         <div>
-          <h3 className="font-[family-name:var(--font-display)] text-2xl text-[var(--brand-ink)]">
+          <h3 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
             {roomType.name}
           </h3>
           <p className="mt-2 text-sm leading-relaxed text-[var(--brand-muted)]">

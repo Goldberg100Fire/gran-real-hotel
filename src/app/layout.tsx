@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import { Manrope, Nunito } from "next/font/google";
 import { SiteFooter } from "@/components/hotel/site-footer";
 import { HOTEL } from "@/lib/hotel-info";
 import "./globals.css";
 
-const display = Fraunces({
+const display = Nunito({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
+  weight: ["700", "800", "900"],
 });
 
 const sans = Manrope({

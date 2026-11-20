@@ -1,4 +1,4 @@
-import { SiteHeader } from "@/components/hotel/site-header";
+import { PageHero } from "@/components/hotel/page-hero";
 import { BookingForm } from "@/components/hotel/booking-form";
 import { getCatalog } from "@/lib/store";
 
@@ -13,6 +13,7 @@ export default async function ReservarPage({
     tipo?: string;
     checkIn?: string;
     checkOut?: string;
+    cancelado?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -20,22 +21,19 @@ export default async function ReservarPage({
 
   return (
     <main>
-      <div className="relative h-48 overflow-hidden bg-[linear-gradient(135deg,#06262f,#0b3d4a_55%,#2a9d8f)]">
-        <SiteHeader />
-        <div className="relative mx-auto flex h-full max-w-6xl items-end px-6 pb-8">
-          <div>
-            <h1 className="font-[family-name:var(--font-display)] text-4xl text-white md:text-5xl">
-              Reserva y pago
-            </h1>
-            <p className="mt-2 max-w-xl text-white/80">
-              Ingresa tus datos, elige el método de pago y confirma tu estadía.
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHero
+        title="Reservar"
+        subtitle="Elige fechas, completa tus datos y confirma tu estadía en Otuzco."
+        imageSrc="/hotel/matrimonial-1.png"
+      />
 
       <section className="mx-auto max-w-3xl px-6 py-12">
-        <div className="rounded-[1.75rem] bg-white/90 p-6 shadow-xl ring-1 ring-[var(--ocean-line)] md:p-10">
+        {params.cancelado && (
+          <p className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            El pago se canceló. Puedes intentarlo de nuevo cuando quieras.
+          </p>
+        )}
+        <div className="rounded-[1.75rem] bg-white/95 p-6 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)] md:p-10">
           <BookingForm
             roomTypes={roomTypes}
             initialTypeId={params.tipo}
