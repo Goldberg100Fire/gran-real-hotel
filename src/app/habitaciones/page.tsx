@@ -21,45 +21,43 @@ export default async function HabitacionesPage({
     <main>
       <PageHero
         title="Habitaciones"
-        subtitle="Consulta disponibilidad por fechas. Precios por noche e incluye baño privado, agua caliente, TV cable y Wi‑Fi."
+        subtitle="Elige fechas y revisa qué hay libre. Todas incluyen baño privado, agua caliente, TV cable y Wi‑Fi."
         imageSrc="/hotel/doble.png"
       />
 
-      <section className="mx-auto max-w-6xl px-6 py-12">
-        <form className="mb-10 grid gap-3 rounded-[1.5rem] bg-white p-5 shadow-[0_18px_50px_-28px_rgba(44,36,30,0.35)] ring-1 ring-[var(--brand-line)] md:grid-cols-4">
+      <section className="mx-auto max-w-6xl px-6 py-12 md:py-14">
+        <form className="mb-12 grid gap-4 border-b border-[var(--brand-line)] pb-8 md:grid-cols-[1fr_1fr_auto] md:items-end">
           <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--brand-muted)]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand-muted)]">
               Ingreso
             </label>
             <input
               type="date"
               name="checkIn"
               defaultValue={checkIn}
-              className="h-11 w-full rounded-xl border border-[var(--brand-line)] px-3 text-sm"
+              className="h-11 w-full border border-[var(--brand-line)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-gold)]"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--brand-muted)]">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand-muted)]">
               Salida
             </label>
             <input
               type="date"
               name="checkOut"
               defaultValue={checkOut}
-              className="h-11 w-full rounded-xl border border-[var(--brand-line)] px-3 text-sm"
+              className="h-11 w-full border border-[var(--brand-line)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-gold)]"
             />
           </div>
-          <div className="flex items-end md:col-span-2">
-            <button
-              type="submit"
-              className="h-11 w-full rounded-full bg-[var(--brand-deep)] text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
-            >
-              Consultar disponibilidad
-            </button>
-          </div>
+          <button
+            type="submit"
+            className="h-11 rounded-full bg-[var(--brand-deep)] px-6 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
+          >
+            Consultar
+          </button>
         </form>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-3">
           {availability.map((item) => (
             <RoomTypeCard
               key={item.roomType.id}
@@ -73,15 +71,14 @@ export default async function HabitacionesPage({
           ))}
         </div>
 
-        <p className="mt-12 text-center text-sm text-[var(--brand-muted)]">
-          ¿Listo para confirmar?{" "}
+        <div className="mt-14 text-center">
           <Link
             href="/reservar"
-            className="font-semibold text-[var(--brand-deep)] underline underline-offset-4"
+            className="inline-flex rounded-full bg-[var(--brand-gold)] px-7 py-3.5 text-sm font-bold text-[var(--brand-deep)] transition hover:brightness-110"
           >
             Ir a reservar
           </Link>
-        </p>
+        </div>
       </section>
     </main>
   );

@@ -52,7 +52,7 @@ export default async function AccesoPage({
     <main>
       <PageHero
         title="Acceso huéspedes"
-        subtitle="Reserva y consulta tus comprobantes con correo y documento de identidad."
+        subtitle="Correo verificado y documento único para reservar y ver tus comprobantes."
         imageSrc="/hotel/simple.png"
       />
       <section className="mx-auto max-w-md px-6 py-12">

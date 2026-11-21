@@ -9,24 +9,27 @@ export async function SiteHeader() {
 
   return (
     <header className="absolute inset-x-0 top-0 z-20">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-4 md:px-6 md:py-5">
         <Link href="/" className="flex items-center">
           <Image
             src={HOTEL.logoPath}
             alt={HOTEL.name}
             width={180}
             height={78}
-            className="h-11 w-auto drop-shadow-md md:h-14"
+            className="h-10 w-auto drop-shadow-md md:h-12"
             priority
           />
         </Link>
-        <nav className="flex items-center gap-2 text-sm font-semibold text-white/95 md:gap-5">
-          <Link href="/habitaciones" className="hidden transition hover:text-white sm:inline">
+        <nav className="flex items-center gap-2 text-sm font-semibold text-white/95 sm:gap-4 md:gap-5">
+          <Link
+            href="/habitaciones"
+            className="hidden transition hover:text-white sm:inline"
+          >
             Habitaciones
           </Link>
           <Link
             href="/reservar"
-            className="rounded-full bg-[var(--brand-gold)] px-4 py-2 text-[var(--brand-deep)] shadow-sm transition hover:brightness-110"
+            className="rounded-full bg-[var(--brand-gold)] px-3.5 py-2 text-[var(--brand-deep)] shadow-sm transition hover:brightness-110 sm:px-4"
           >
             Reservar
           </Link>
@@ -43,14 +46,14 @@ export async function SiteHeader() {
               {staff && (
                 <Link
                   href="/admin"
-                  className="hidden text-white/75 transition hover:text-white md:inline"
+                  className="transition hover:text-white"
                 >
                   Panel
                 </Link>
               )}
             </>
           ) : (
-            <Link href="/acceso" className="hidden transition hover:text-white md:inline">
+            <Link href="/acceso" className="transition hover:text-white">
               Acceder
             </Link>
           )}

@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { randomBytes } from "crypto";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
 import { HOTEL } from "./hotel-info";
@@ -357,7 +358,7 @@ export async function createReservation(input: {
 
   const reservation: Reservation = {
     id: `res-${crypto.randomUUID()}`,
-    code: `GR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    code: `GR-${randomBytes(5).toString("hex").toUpperCase().slice(0, 8)}`,
     roomTypeId: input.roomTypeId,
     roomId: assignedRoom?.id ?? null,
     checkIn: input.checkIn,

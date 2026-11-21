@@ -33,7 +33,7 @@ export default async function ReservarPage({
             El pago se canceló. Puedes intentarlo de nuevo cuando quieras.
           </p>
         )}
-        <div className="rounded-[1.75rem] bg-white/95 p-6 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)] md:p-10">
+        <div className="bg-white p-6 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)] md:p-10">
           <BookingForm
             roomTypes={roomTypes}
             initialTypeId={params.tipo}
