@@ -24,7 +24,7 @@ En **Secrets** del app (o del entorno):
 3. `PAGOEFECTIVO_ID_SERVICE`
 4. `PAGOEFECTIVO_ENV` → `sandbox` primero, luego `production`
 5. `PAGOEFECTIVO_WEBHOOK_SECRET` → puedes usar la misma Secret Key si PagoEfectivo no te da otra
-6. `APP_URL` → URL pública del app, ej. `https://brisa-pacifico.apps.grok.bot`
+6. `APP_URL` → URL pública del app, ej. `https://gran-real-hotel.apps.grok.bot`
 
 **No pegues las claves en el chat.** Solo en el formulario seguro.
 
@@ -33,7 +33,7 @@ En **Secrets** del app (o del entorno):
 En el panel de PagoEfectivo configura la URL de notificación:
 
 ```
-https://brisa-pacifico.apps.grok.bot/api/pagoefectivo/webhook
+https://gran-real-hotel.apps.grok.bot/api/pagoefectivo/webhook
 ```
 
 Cuando el CIP se paga, PagoEfectivo avisa y la reserva pasa a **pagado**.
