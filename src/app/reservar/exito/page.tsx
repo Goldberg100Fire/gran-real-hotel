@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { PageHero } from "@/components/hotel/page-hero";
+import { getSessionUser, isStaffRole } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import { HOTEL } from "@/lib/hotel-info";
 import { getReservationByCode } from "@/lib/store";
@@ -14,9 +16,39 @@ export default async function ExitoPage({
   searchParams: Promise<{ code?: string; cip?: string; session_id?: string }>;
 }) {
   const { code, cip } = await searchParams;
+  const user = await getSessionUser();
+
+  if (!user) {
+    const next = code
+      ? `/reservar/exito?code=${encodeURIComponent(code)}`
+      : "/mis-reservas";
+    redirect(`/acceso?next=${encodeURIComponent(next)}`);
+  }
+
   const detail = code ? await getReservationByCode(code) : null;
+
+  // Solo el dueño de la reserva (o personal) puede ver el detalle
+  if (
+    detail &&
+    !isStaffRole(user.role) &&
+    detail.reservation.guestEmail !== user.email
+  ) {
+    redirect("/mis-reservas");
+  }
+
+  // Si piden CIP, debe coincidir con la reserva del usuario
+  if (
+    detail &&
+    cip &&
+    detail.reservation.cipCode &&
+    detail.reservation.cipCode !== cip &&
+    !isStaffRole(user.role)
+  ) {
+    redirect("/mis-reservas");
+  }
+
   const paid = detail?.reservation.paymentStatus === "pagado";
-  const cipCode = detail?.reservation.cipCode || cip || null;
+  const cipCode = detail?.reservation.cipCode || null;
   const cipUrl = detail?.reservation.cipUrl;
   const demo = detail?.reservation.cipMode === "demo";
 
@@ -37,7 +69,16 @@ export default async function ExitoPage({
             {HOTEL.name}
           </p>
 
-          {paid ? (
+          {!detail ? (
+            <>
+              <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
+                Reserva no encontrada
+              </h2>
+              <p className="mt-4 text-sm text-[var(--brand-muted)]">
+                Revisa el código en tu correo o en Mis reservas.
+              </p>
+            </>
+          ) : paid ? (
             <>
               <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
                 ¡Pago confirmado!
@@ -53,9 +94,8 @@ export default async function ExitoPage({
                 Paga con este CIP
               </h2>
               <p className="mt-4 text-sm text-[var(--brand-muted)]">
-                Es un código único. Puedes pagarlo en agentes BCP, Interbank,
-                Kasnet, farmacias afiliadas o en la app de tu banco (pago de
-                servicios → PagoEfectivo).
+                Es un código único. Paga en agentes BCP, Interbank, Kasnet o en
+                la app de tu banco (pago de servicios → PagoEfectivo).
               </p>
               {cipCode && (
                 <div className="mt-8 rounded-2xl bg-[var(--brand-mist)] px-4 py-6">
@@ -65,15 +105,13 @@ export default async function ExitoPage({
                   <p className="mt-2 font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-wider text-[var(--brand-deep)]">
                     {cipCode}
                   </p>
-                  {detail && (
-                    <p className="mt-3 text-sm text-[var(--brand-ink)]">
-                      Monto exacto:{" "}
-                      <strong>
-                        {formatMoney(detail.reservation.totalAmount)}
-                      </strong>
-                    </p>
-                  )}
-                  {detail?.reservation.cipExpiresAt && (
+                  <p className="mt-3 text-sm text-[var(--brand-ink)]">
+                    Monto exacto:{" "}
+                    <strong>
+                      {formatMoney(detail.reservation.totalAmount)}
+                    </strong>
+                  </p>
+                  {detail.reservation.cipExpiresAt && (
                     <p className="mt-1 text-xs text-[var(--brand-muted)]">
                       Válido hasta{" "}
                       {new Date(
@@ -95,24 +133,25 @@ export default async function ExitoPage({
               )}
               {demo && (
                 <p className="mt-4 text-xs text-amber-800">
-                  CIP de prueba: la cuenta real de PagoEfectivo del dueño aún no
-                  está conectada.
+                  CIP de prueba: falta conectar la cuenta real de PagoEfectivo.
                 </p>
               )}
             </>
           )}
 
-          <p className="mt-8 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--brand-muted)]">
-            Código de reserva
-          </p>
-          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
-            {code || detail?.reservation.code || "GR-XXXXXX"}
-          </p>
           {detail && (
-            <p className="mt-3 text-sm text-[var(--brand-muted)]">
-              {detail.roomType.name} · {formatDate(detail.reservation.checkIn)} →{" "}
-              {formatDate(detail.reservation.checkOut)}
-            </p>
+            <>
+              <p className="mt-8 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--brand-muted)]">
+                Código de reserva
+              </p>
+              <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
+                {detail.reservation.code}
+              </p>
+              <p className="mt-3 text-sm text-[var(--brand-muted)]">
+                {detail.roomType.name} · {formatDate(detail.reservation.checkIn)}{" "}
+                → {formatDate(detail.reservation.checkOut)}
+              </p>
+            </>
           )}
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">

@@ -7,14 +7,13 @@ import {
 } from "@/lib/pagoefectivo";
 import {
   confirmReservationByCip,
-  confirmReservationPayment,
   getReservationByCip,
   getReservationById,
 } from "@/lib/store";
 
 /**
  * Notificación de pago CIP.
- * Sin cuenta PagoEfectivo activa, no confirma reservas.
+ * Solo acepta firmas válidas; compara monto con la reserva.
  */
 export async function POST(request: Request) {
   if (!isPagoEfectivoConfigured()) {
@@ -25,38 +24,64 @@ export async function POST(request: Request) {
   }
 
   const raw = await request.text();
+  if (!verifyPagoEfectivoWebhook(request, raw)) {
+    return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
+  }
+
   let body: unknown = {};
   try {
     body = raw ? JSON.parse(raw) : {};
   } catch {
-    body = {};
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  if (!verifyPagoEfectivoWebhook(request, body)) {
-    return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
-  }
-
-  const { cip, paid, transactionCode } = extractCipFromWebhook(body);
+  const { cip, paid, transactionCode, amount } = extractCipFromWebhook(body);
   if (!paid) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  let reservation = cip ? await confirmReservationByCip(cip) : null;
+  let detail = cip ? await getReservationByCip(cip) : null;
+  if (!detail && transactionCode) {
+    detail = await getReservationById(transactionCode);
+  }
 
-  if (!reservation && transactionCode) {
-    const byId = await getReservationById(transactionCode);
-    if (byId?.reservation.cipCode) {
-      reservation = await confirmReservationByCip(byId.reservation.cipCode);
-    } else if (byId) {
-      reservation = await confirmReservationPayment(byId.reservation.id);
+  if (!detail) {
+    return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
+  }
+
+  if (amount != null) {
+    const expected = Number(detail.reservation.totalAmount);
+    if (Math.abs(amount - expected) > 0.05) {
+      console.error("Monto CIP no coincide", {
+        cip,
+        amount,
+        expected,
+        reservationId: detail.reservation.id,
+      });
+      return NextResponse.json(
+        { error: "Monto de pago no coincide con la reserva" },
+        { status: 400 },
+      );
     }
   }
 
-  if (reservation?.cipCode) {
-    const detail = await getReservationByCip(reservation.cipCode);
-    if (detail) {
+  if (detail.reservation.paymentStatus === "pagado") {
+    return NextResponse.json({ ok: true, already: true });
+  }
+
+  if (!detail.reservation.cipCode) {
+    return NextResponse.json(
+      { error: "La reserva no tiene CIP asociado" },
+      { status: 400 },
+    );
+  }
+
+  const reservation = await confirmReservationByCip(detail.reservation.cipCode);
+  if (reservation) {
+    const confirmed = await getReservationByCip(reservation.cipCode || "");
+    if (confirmed) {
       try {
-        await sendReservationReceipt(detail);
+        await sendReservationReceipt(confirmed);
       } catch (error) {
         console.error("Comprobante post-CIP:", error);
       }

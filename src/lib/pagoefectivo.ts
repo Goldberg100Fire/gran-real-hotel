@@ -1,4 +1,4 @@
-import { createHmac, randomInt } from "crypto";
+import { createHmac, randomInt, timingSafeEqual } from "crypto";
 
 export function isPagoEfectivoConfigured(): boolean {
   return Boolean(
@@ -13,7 +13,6 @@ function getBaseUrl(): string {
   if (env === "production" || env === "prod") {
     return "https://services.pagoefectivo.pe/v1";
   }
-  // Ambiente de pruebas PagoEfectivo Perú
   return "https://preprod.pagoefectivo.pe/v1";
 }
 
@@ -181,13 +180,19 @@ export async function createPagoEfectivoCip(input: {
   };
 }
 
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
 /**
- * Valida notificación de pago CIP (webhook).
- * Sin secreto configurado, rechaza confirmaciones en producción.
+ * Exige firma HMAC válida. Sin header de firma → rechazo (no se acepta JSON suelto).
  */
 export function verifyPagoEfectivoWebhook(
   request: Request,
-  body: unknown,
+  rawBody: string,
 ): boolean {
   const secret =
     process.env.PAGOEFECTIVO_WEBHOOK_SECRET?.trim() ||
@@ -197,20 +202,17 @@ export function verifyPagoEfectivoWebhook(
   const signature =
     request.headers.get("pe-signature") ||
     request.headers.get("x-pagoefectivo-signature") ||
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    request.headers.get("x-signature") ||
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    "";
 
-  if (!signature) {
-    // Algunos entornos envían el CIP y estado sin firma; exigimos secreto + cuerpo válido.
-    return Boolean(body && typeof body === "object");
-  }
+  if (!signature.trim()) return false;
 
   try {
-    const raw = typeof body === "string" ? body : JSON.stringify(body);
-    const expected = createHmac("sha256", secret).update(raw).digest("hex");
-    return (
-      signature === expected ||
-      signature === createHmac("sha256", secret).update(raw).digest("base64")
-    );
+    const hex = createHmac("sha256", secret).update(rawBody).digest("hex");
+    const b64 = createHmac("sha256", secret).update(rawBody).digest("base64");
+    const normalized = signature.trim();
+    return safeEqual(normalized, hex) || safeEqual(normalized, b64);
   } catch {
     return false;
   }
@@ -220,6 +222,7 @@ export function extractCipFromWebhook(body: unknown): {
   cip: string | null;
   paid: boolean;
   transactionCode: string | null;
+  amount: number | null;
 } {
   const data = (body || {}) as Record<string, unknown>;
   const nested = (data.data || data) as Record<string, unknown>;
@@ -233,9 +236,27 @@ export function extractCipFromWebhook(body: unknown): {
     status === "1" ||
     status === "done" ||
     nested.eventType === "cip.paid";
-  const transactionCode = String(
-    nested.transactionCode || nested.externalTransactionId || data.transactionCode || "",
-  ).trim() || null;
+  const transactionCode =
+    String(
+      nested.transactionCode ||
+        nested.externalTransactionId ||
+        data.transactionCode ||
+        "",
+    ).trim() || null;
 
-  return { cip, paid, transactionCode };
+  const amountRaw =
+    nested.amount ?? nested.payAmount ?? nested.totalAmount ?? data.amount;
+  const amount =
+    typeof amountRaw === "number"
+      ? amountRaw
+      : amountRaw != null
+        ? Number(amountRaw)
+        : null;
+
+  return {
+    cip,
+    paid,
+    transactionCode,
+    amount: Number.isFinite(amount) ? Number(amount) : null,
+  };
 }
