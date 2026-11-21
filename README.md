@@ -9,7 +9,7 @@ Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilid
 - Reserva con acceso por código al correo + documento de identidad único
 - Roles: **jefe** (dueño) y **empleado** (personal autorizado)
 - Panel admin con permisos por rol
-- Pago en línea (Mercado Pago / Yape) preparado para activar después
+- Pago en línea (Mercado Pago / Yape) desactivado hasta crear la cuenta del dueño
 
 ## Seguridad y roles
 

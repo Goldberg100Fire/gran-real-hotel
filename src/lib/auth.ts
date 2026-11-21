@@ -267,15 +267,23 @@ export function createLoginCode(): string {
 }
 
 export function getAppOrigin(request: Request): string {
-  const envUrl = process.env.APP_URL;
+  const envUrl = process.env.APP_URL?.trim();
   if (envUrl) return envUrl.replace(/\/$/, "");
 
-  const proto = request.headers.get("x-forwarded-proto") || "http";
-  const host =
-    request.headers.get("x-forwarded-host") ||
-    request.headers.get("host") ||
-    "127.0.0.1:3451";
-  return `${proto}://${host}`;
+  // Sin APP_URL no confiamos en Host / X-Forwarded-* (riesgo de open redirect).
+  // Solo permitimos loopback en desarrollo local.
+  const host = (request.headers.get("host") || "").split(",")[0]?.trim() || "";
+  const isLocal =
+    host.startsWith("127.0.0.1") ||
+    host.startsWith("localhost") ||
+    host.startsWith("[::1]");
+  if (process.env.NODE_ENV !== "production" && isLocal) {
+    return `http://${host}`;
+  }
+
+  throw new AuthConfigError(
+    "Falta APP_URL (URL pública de la app). Configúrala en los secretos antes de usar Google OAuth o pagos.",
+  );
 }
 
 export function safeNextPath(next: string | null | undefined): string {

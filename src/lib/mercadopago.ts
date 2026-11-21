@@ -1,8 +1,20 @@
+import { createHmac, timingSafeEqual } from "crypto";
+
 export function isMercadoPagoConfigured(): boolean {
   return Boolean(
     process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() &&
       process.env.MERCADOPAGO_PUBLIC_KEY?.trim(),
   );
+}
+
+/** Secret de firma del webhook (Mercado Pago → Webhooks). */
+export function getMercadoPagoWebhookSecret(): string | null {
+  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET?.trim();
+  return secret || null;
+}
+
+export function isMercadoPagoWebhookReady(): boolean {
+  return isMercadoPagoConfigured() && Boolean(getMercadoPagoWebhookSecret());
 }
 
 export function getMercadoPagoAccessToken(): string {
@@ -86,7 +98,18 @@ export async function createCheckoutPreference(input: {
   return (await response.json()) as MercadoPagoPreference;
 }
 
-export async function getMercadoPagoPayment(paymentId: string) {
+export type MercadoPagoPayment = {
+  id: number;
+  status: string;
+  transaction_amount?: number;
+  currency_id?: string;
+  external_reference?: string;
+  metadata?: { reservationId?: string; reservationCode?: string };
+};
+
+export async function getMercadoPagoPayment(
+  paymentId: string,
+): Promise<MercadoPagoPayment> {
   const response = await fetch(
     `https://api.mercadopago.com/v1/payments/${paymentId}`,
     {
@@ -101,10 +124,41 @@ export async function getMercadoPagoPayment(paymentId: string) {
     throw new Error(`No se pudo leer el pago: ${detail}`);
   }
 
-  return (await response.json()) as {
-    id: number;
-    status: string;
-    external_reference?: string;
-    metadata?: { reservationId?: string; reservationCode?: string };
-  };
+  return (await response.json()) as MercadoPagoPayment;
+}
+
+/**
+ * Valida x-signature de notificaciones Mercado Pago.
+ * Manifest: id:[data.id];request-id:[x-request-id];ts:[ts];
+ */
+export function verifyMercadoPagoWebhookSignature(input: {
+  signatureHeader: string | null;
+  requestId: string | null;
+  dataId: string;
+}): boolean {
+  const secret = getMercadoPagoWebhookSecret();
+  if (!secret || !input.signatureHeader || !input.requestId || !input.dataId) {
+    return false;
+  }
+
+  const parts = Object.fromEntries(
+    input.signatureHeader.split(",").map((chunk) => {
+      const [key, value] = chunk.split("=").map((item) => item.trim());
+      return [key, value];
+    }),
+  ) as { ts?: string; v1?: string };
+
+  if (!parts.ts || !parts.v1) return false;
+
+  const manifest = `id:${input.dataId};request-id:${input.requestId};ts:${parts.ts};`;
+  const expected = createHmac("sha256", secret).update(manifest).digest("hex");
+
+  try {
+    const a = Buffer.from(parts.v1, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }

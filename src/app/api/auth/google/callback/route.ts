@@ -12,7 +12,18 @@ import {
 import { getGuestByEmail } from "@/lib/store";
 
 export async function GET(request: Request) {
-  const origin = getAppOrigin(request);
+  let origin: string;
+  try {
+    origin = getAppOrigin(request);
+  } catch (error) {
+    if (error instanceof AuthConfigError) {
+      return NextResponse.redirect(
+        new URL("/acceso?error=sesion_no_configurada", request.url),
+      );
+    }
+    throw error;
+  }
+
   if (!isGoogleAuthConfigured()) {
     return NextResponse.redirect(`${origin}/acceso?error=google_no_configurado`);
   }

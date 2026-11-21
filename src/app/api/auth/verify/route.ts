@@ -7,6 +7,7 @@ import {
   setSessionCookie,
 } from "@/lib/auth";
 import { validateGuestDocument } from "@/lib/document";
+import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import { bindGuestIdentity, consumeLoginCode, getGuestByEmail } from "@/lib/store";
 
 export async function POST(request: Request) {
@@ -22,6 +23,21 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Correo y código son obligatorios" },
         { status: 400 },
+      );
+    }
+
+    const ipLimit = checkRateLimit(clientKey(request, "otp-verify"), 20, 15 * 60 * 1000);
+    if (!ipLimit.ok) {
+      return NextResponse.json(
+        { error: `Demasiados intentos. Espera ${ipLimit.retryAfterSec}s.` },
+        { status: 429 },
+      );
+    }
+    const emailLimit = checkRateLimit(`otp-verify:${email}`, 10, 15 * 60 * 1000);
+    if (!emailLimit.ok) {
+      return NextResponse.json(
+        { error: `Demasiados intentos con este correo. Espera ${emailLimit.retryAfterSec}s.` },
+        { status: 429 },
       );
     }
 
