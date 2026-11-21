@@ -82,7 +82,7 @@ export function AdminPanel({
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
     if (response.status === 401) {
-      router.push("/acceso?next=/admin");
+      router.push("/personal?next=/admin");
       return;
     }
     if (response.status === 403) {

@@ -13,9 +13,10 @@ Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilid
 
 ## Seguridad y roles
 
+- **Huéspedes:** `/acceso` — correo + DNI/pasaporte (un documento = una cuenta).
+- **Personal (jefe/empleados):** `/personal` — link separado, no aparece en el menú público. Solo correos autorizados.
 - **Jefe:** correos en `ADMIN_ALLOWED_EMAILS`. Precios, habitaciones, personal y comprobantes.
-- **Empleado:** el jefe los autoriza en Admin → Personal. Estados de habitación y reservas.
-- **Cliente:** correo + DNI/pasaporte. Un documento = una cuenta (no se reutiliza en otro correo).
+- **Empleado:** el jefe los autoriza en Admin → Personal.
 
 ## Stack
 

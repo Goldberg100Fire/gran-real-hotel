@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, isStaffRole } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
 
 export async function SiteHeader() {
   const user = await getSessionUser();
+  const staff = user && isStaffRole(user.role);
 
   return (
     <header className="absolute inset-x-0 top-0 z-20">
@@ -31,13 +32,15 @@ export async function SiteHeader() {
           </Link>
           {user ? (
             <>
-              <Link
-                href="/mis-reservas"
-                className="hidden transition hover:text-white md:inline"
-              >
-                Mis reservas
-              </Link>
-              {user.isAdmin && (
+              {!staff && (
+                <Link
+                  href="/mis-reservas"
+                  className="hidden transition hover:text-white md:inline"
+                >
+                  Mis reservas
+                </Link>
+              )}
+              {staff && (
                 <Link
                   href="/admin"
                   className="hidden text-white/75 transition hover:text-white md:inline"

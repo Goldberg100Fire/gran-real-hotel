@@ -10,17 +10,18 @@ export function AuthForm({
   nextPath = "/",
   googleEnabled = false,
   title = "Entra con tu correo",
-  subtitle = "Te enviamos un código. Los clientes deben registrar su DNI o pasaporte.",
+  subtitle = "Te enviamos un código de acceso.",
   requireDocument = true,
   completeDocumentOnly = false,
+  portal = "cliente",
 }: {
   nextPath?: string;
   googleEnabled?: boolean;
   title?: string;
   subtitle?: string;
   requireDocument?: boolean;
-  /** Solo completar documento (sesión ya existe, p. ej. Google). */
   completeDocumentOnly?: boolean;
+  portal?: "cliente" | "personal";
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -35,9 +36,11 @@ export function AuthForm({
   const [error, setError] = useState<string | null>(null);
 
   const googleHref = useMemo(
-    () => `/api/auth/google?next=${encodeURIComponent(nextPath)}`,
-    [nextPath],
+    () => `/api/auth/google?next=${encodeURIComponent(nextPath)}&portal=${portal}`,
+    [nextPath, portal],
   );
+
+  const isStaffPortal = portal === "personal";
 
   async function requestCode(event: React.FormEvent) {
     event.preventDefault();
@@ -47,7 +50,7 @@ export function AuthForm({
       const response = await fetch("/api/auth/request-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, portal }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo enviar el código");
@@ -72,7 +75,8 @@ export function AuthForm({
           code,
           name,
           phone,
-          document: requireDocument ? document : undefined,
+          document: requireDocument && !isStaffPortal ? document : undefined,
+          portal,
         }),
       });
       const data = await response.json();
@@ -107,8 +111,12 @@ export function AuthForm({
     }
   }
 
+  const cardClass = isStaffPortal
+    ? "space-y-6 rounded-[1.75rem] bg-white p-8 text-[var(--brand-ink)] shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)]"
+    : "space-y-6 rounded-[1.75rem] bg-white p-8 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)]";
+
   return (
-    <div className="space-y-6 rounded-[1.75rem] bg-white p-8 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)]">
+    <div className={cardClass}>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--brand-gold)]">
           Gran Real Hotel
@@ -121,17 +129,19 @@ export function AuthForm({
 
       {step === "email" && (
         <form onSubmit={requestCode} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nombre completo</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="María López"
-              className="h-11 rounded-xl"
-              required
-            />
-          </div>
+          {!isStaffPortal && (
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre completo</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="María López"
+                className="h-11 rounded-xl"
+                required
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="email">Correo</Label>
             <Input
@@ -140,7 +150,9 @@ export function AuthForm({
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="tu@correo.com"
+              placeholder={
+                isStaffPortal ? "correo@hotel.com" : "tu@correo.com"
+              }
               className="h-11 rounded-xl"
             />
           </div>
@@ -172,10 +184,10 @@ export function AuthForm({
               className="h-11 rounded-xl tracking-[0.3em]"
             />
           </div>
-          {requireDocument && (
+          {requireDocument && !isStaffPortal && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="document">DNI / pasaporte / carné (clientes)</Label>
+                <Label htmlFor="document">DNI / pasaporte / carné</Label>
                 <Input
                   id="document"
                   value={document}
@@ -184,8 +196,7 @@ export function AuthForm({
                   className="h-11 rounded-xl"
                 />
                 <p className="text-xs text-[var(--brand-muted)]">
-                  Obligatorio para huéspedes: un documento = una cuenta. El personal
-                  autorizado del hotel puede dejarlo vacío.
+                  Obligatorio para huéspedes. Un documento = una cuenta.
                 </p>
               </div>
               <div className="space-y-2">
@@ -205,7 +216,7 @@ export function AuthForm({
             disabled={loading}
             className="h-11 w-full rounded-full bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
           >
-            {loading ? "Verificando..." : "Entrar"}
+            {loading ? "Verificando..." : isStaffPortal ? "Entrar al panel" : "Entrar"}
           </Button>
           <button
             type="button"
@@ -223,8 +234,7 @@ export function AuthForm({
       {step === "document" && (
         <form onSubmit={completeDocument} className="space-y-4">
           <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-            Para reservar debes registrar tu documento de identidad. Una persona =
-            una cuenta.
+            Para reservar debes registrar tu documento de identidad.
           </p>
           <div className="space-y-2">
             <Label htmlFor="doc-name">Nombre completo</Label>
@@ -267,7 +277,7 @@ export function AuthForm({
         </form>
       )}
 
-      {googleEnabled && step === "email" && (
+      {googleEnabled && step === "email" && !isStaffPortal && (
         <>
           <div className="flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-[var(--brand-muted)]">
             <span className="h-px flex-1 bg-[var(--brand-line)]" />

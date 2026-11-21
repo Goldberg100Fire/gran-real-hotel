@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     const name = String(body.name ?? "").trim();
     const documentRaw = String(body.document ?? "").trim();
     const phone = String(body.phone ?? "").trim();
+    const portal = body.portal === "personal" ? "personal" : "cliente";
 
     if (!email || !code) {
       return NextResponse.json(
@@ -26,17 +27,27 @@ export async function POST(request: Request) {
       );
     }
 
-    const ipLimit = checkRateLimit(clientKey(request, "otp-verify"), 20, 15 * 60 * 1000);
+    const ipLimit = checkRateLimit(
+      clientKey(request, `otp-verify-${portal}`),
+      20,
+      15 * 60 * 1000,
+    );
     if (!ipLimit.ok) {
       return NextResponse.json(
         { error: `Demasiados intentos. Espera ${ipLimit.retryAfterSec}s.` },
         { status: 429 },
       );
     }
-    const emailLimit = checkRateLimit(`otp-verify:${email}`, 10, 15 * 60 * 1000);
+    const emailLimit = checkRateLimit(
+      `otp-verify:${portal}:${email}`,
+      10,
+      15 * 60 * 1000,
+    );
     if (!emailLimit.ok) {
       return NextResponse.json(
-        { error: `Demasiados intentos con este correo. Espera ${emailLimit.retryAfterSec}s.` },
+        {
+          error: `Demasiados intentos con este correo. Espera ${emailLimit.retryAfterSec}s.`,
+        },
         { status: 429 },
       );
     }
@@ -54,20 +65,36 @@ export async function POST(request: Request) {
       name: name || email.split("@")[0],
     });
 
-    // Clientes: documento de identidad obligatorio y único
-    if (!isStaffRole(user.role)) {
+    if (portal === "personal") {
+      if (!isStaffRole(user.role)) {
+        return NextResponse.json(
+          {
+            error:
+              "Este acceso es solo para personal autorizado del hotel.",
+          },
+          { status: 403 },
+        );
+      }
+    } else {
+      if (isStaffRole(user.role)) {
+        return NextResponse.json(
+          {
+            error:
+              "Este correo es del personal. Entra por /personal.",
+          },
+          { status: 403 },
+        );
+      }
+
       const existing = await getGuestByEmail(email);
       let document = documentRaw;
-
-      if (!document && existing) {
-        document = existing.document;
-      }
+      if (!document && existing) document = existing.document;
 
       if (!document) {
         return NextResponse.json(
           {
             error:
-              "Los clientes deben registrar su DNI, carné o pasaporte. Así tu cuenta queda vinculada a una sola identidad.",
+              "Los clientes deben registrar su DNI, carné o pasaporte.",
           },
           { status: 400 },
         );

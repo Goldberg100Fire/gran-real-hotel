@@ -287,7 +287,12 @@ export function getAppOrigin(request: Request): string {
 }
 
 export function safeNextPath(next: string | null | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  if (!next || typeof next !== "string") return "/";
+  // Solo rutas relativas internas; bloquea //evil.com, /\evil, protocol-relative, etc.
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
+    return "/";
+  }
+  if (next.includes("://") || next.includes("@")) return "/";
   return next;
 }
 

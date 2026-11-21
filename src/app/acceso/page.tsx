@@ -1,11 +1,25 @@
 import { redirect } from "next/navigation";
 import { AuthForm } from "@/components/hotel/auth-form";
 import { PageHero } from "@/components/hotel/page-hero";
-import { getSessionUser, isGoogleAuthConfigured, isStaffRole } from "@/lib/auth";
+import {
+  getSessionUser,
+  isGoogleAuthConfigured,
+  isStaffRole,
+  safeNextPath,
+} from "@/lib/auth";
 
 export const metadata = {
   title: "Acceso",
 };
+
+function safeClientNext(next: string | null | undefined): string {
+  const path = safeNextPath(next);
+  // Clientes no deben aterrizar en el panel del personal
+  if (path.startsWith("/admin") || path.startsWith("/personal")) {
+    return "/mis-reservas";
+  }
+  return path === "/" ? "/mis-reservas" : path;
+}
 
 export default async function AccesoPage({
   searchParams,
@@ -14,11 +28,14 @@ export default async function AccesoPage({
 }) {
   const params = await searchParams;
   const user = await getSessionUser();
-  const nextPath =
-    params.next && params.next.startsWith("/") ? params.next : "/mis-reservas";
+  const nextPath = safeClientNext(params.next);
   const needsDocument =
     params.completar === "documento" ||
     (user && !isStaffRole(user.role) && !user.document);
+
+  if (user && isStaffRole(user.role)) {
+    redirect("/admin");
+  }
 
   if (user && !needsDocument) {
     redirect(nextPath);
@@ -34,8 +51,8 @@ export default async function AccesoPage({
   return (
     <main>
       <PageHero
-        title="Acceso seguro"
-        subtitle="Clientes con documento único. Personal del hotel solo con correo autorizado."
+        title="Acceso huéspedes"
+        subtitle="Reserva y consulta tus comprobantes con correo y documento de identidad."
         imageSrc="/hotel/simple.png"
       />
       <section className="mx-auto max-w-md px-6 py-12">
@@ -45,9 +62,11 @@ export default async function AccesoPage({
           </p>
         )}
         <AuthForm
+          portal="cliente"
           nextPath={nextPath}
           googleEnabled={isGoogleAuthConfigured() && !needsDocument}
           completeDocumentOnly={Boolean(needsDocument && user)}
+          requireDocument
           title={
             needsDocument && user
               ? "Completa tu identidad"
@@ -56,7 +75,7 @@ export default async function AccesoPage({
           subtitle={
             needsDocument && user
               ? "Registra tu DNI, carné o pasaporte para vincular la cuenta."
-              : "Huéspedes: correo + documento. Personal: solo correos autorizados por el jefe."
+              : "Solo para huéspedes. Un documento = una cuenta."
           }
         />
       </section>

@@ -6,12 +6,13 @@ import { USER_ROLE_LABELS } from "@/lib/types";
 
 export const metadata = {
   title: "Admin",
+  robots: { index: false, follow: false },
 };
 
 export default async function AdminPage() {
   const user = await getSessionUser();
   if (!user) {
-    redirect("/acceso?next=/admin");
+    redirect("/personal?next=/admin");
   }
   if (!isStaffRole(user.role)) {
     redirect("/mis-reservas");

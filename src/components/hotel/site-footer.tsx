@@ -22,7 +22,7 @@ export function SiteFooter() {
             Reservar
           </Link>
           <Link href="/acceso" className="hover:text-white">
-            Acceder
+            Acceso huéspedes
           </Link>
         </div>
       </div>
