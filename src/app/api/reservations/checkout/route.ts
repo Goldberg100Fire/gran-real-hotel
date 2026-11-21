@@ -1,30 +1,36 @@
 import { NextResponse } from "next/server";
-import { getAppOrigin, requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { validateGuestDocument } from "@/lib/document";
 import { HOTEL } from "@/lib/hotel-info";
+import { sendReservationReceipt } from "@/lib/mail";
+import { createPagoEfectivoCip } from "@/lib/pagoefectivo";
+import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import {
-  createCheckoutPreference,
-  isMercadoPagoConfigured,
-} from "@/lib/mercadopago";
-import { createReservation, getCatalog } from "@/lib/store";
+  createReservation,
+  getCatalog,
+  updateReservationCip,
+} from "@/lib/store";
 
+/** Genera reserva + código CIP único de PagoEfectivo. */
 export async function POST(request: Request) {
   try {
-    if (!isMercadoPagoConfigured()) {
-      return NextResponse.json(
-        {
-          error:
-            "Pagos no configurados. Agrega MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY.",
-        },
-        { status: 503 },
-      );
-    }
-
     const user = await requireUser();
     if (!user) {
       return NextResponse.json(
         { error: "Inicia sesión con tu correo para reservar" },
         { status: 401 },
+      );
+    }
+
+    const limit = checkRateLimit(
+      clientKey(request, `checkout:${user.email}`),
+      5,
+      30 * 60 * 1000,
+    );
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: `Demasiados intentos. Espera ${limit.retryAfterSec}s.` },
+        { status: 429 },
       );
     }
 
@@ -88,7 +94,7 @@ export async function POST(request: Request) {
       guestPhone: String(guestPhone),
       guestDocument: docCheck.document,
       specialRequests: specialRequests ? String(specialRequests) : "",
-      paymentMethod: "yape",
+      paymentMethod: "pagoefectivo",
       paymentStatus: "pendiente",
       status: "pendiente",
     });
@@ -102,38 +108,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = getAppOrigin(request);
-    const preference = await createCheckoutPreference({
-      title: `${HOTEL.name} · ${roomType.name}`,
-      description: `${reservation.checkIn} → ${reservation.checkOut} · ${reservation.nights} noche(s) · ${reservation.code}`,
+    const cip = await createPagoEfectivoCip({
       amount: reservation.totalAmount,
-      reservationId: reservation.id,
-      reservationCode: reservation.code,
-      payerEmail: user.email,
-      successUrl: `${origin}/reservar/exito?code=${reservation.code}`,
-      pendingUrl: `${origin}/reservar/exito?code=${reservation.code}&pending=1`,
-      failureUrl: `${origin}/reservar?cancelado=1&tipo=${reservation.roomTypeId}`,
-      notificationUrl: `${origin}/api/mercadopago/webhook`,
+      transactionCode: reservation.id,
+      userEmail: user.email,
+      userName: reservation.guestName,
+      userPhone: reservation.guestPhone,
+      userDocument: reservation.guestDocument,
+      paymentConcept: `${HOTEL.name} · ${roomType.name} · ${reservation.code}`,
+      expiryHours: 48,
     });
 
-    const checkoutUrl =
-      preference.init_point || preference.sandbox_init_point || null;
+    const updated = await updateReservationCip(reservation.id, {
+      cipCode: cip.cip,
+      cipUrl: cip.cipUrl,
+      cipExpiresAt: cip.expiresAt,
+      cipMode: cip.mode,
+    });
 
-    if (!checkoutUrl) {
-      return NextResponse.json(
-        { error: "Mercado Pago no devolvió URL de pago" },
-        { status: 502 },
-      );
+    try {
+      await sendReservationReceipt({ reservation: updated, roomType });
+    } catch (error) {
+      console.error("No se pudo enviar correo de CIP:", error);
     }
 
     return NextResponse.json({
-      reservation,
-      checkoutUrl,
-      preferenceId: preference.id,
+      reservation: updated,
+      cip: {
+        code: updated.cipCode,
+        url: updated.cipUrl,
+        expiresAt: updated.cipExpiresAt,
+        mode: updated.cipMode,
+        amount: updated.totalAmount,
+      },
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudo iniciar el pago";
+      error instanceof Error ? error.message : "No se pudo generar el CIP";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

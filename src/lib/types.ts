@@ -1,11 +1,12 @@
 export type RoomStatus = "disponible" | "ocupada" | "mantenimiento" | "limpieza";
 
 export type PaymentMethod =
+  | "pagoefectivo"
+  | "pago_en_hotel"
   | "tarjeta"
   | "yape"
   | "plin"
-  | "transferencia"
-  | "pago_en_hotel";
+  | "transferencia";
 
 export type ReservationStatus =
   | "pendiente"
@@ -86,6 +87,11 @@ export interface Reservation {
   nights: number;
   totalAmount: number;
   createdAt: string;
+  /** Código CIP único de PagoEfectivo */
+  cipCode?: string;
+  cipUrl?: string | null;
+  cipExpiresAt?: string | null;
+  cipMode?: "live" | "demo";
 }
 
 export interface MailMessage {
@@ -118,11 +124,12 @@ export interface HotelStore {
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  tarjeta: "Tarjeta de crédito/débito",
+  pagoefectivo: "PagoEfectivo (código CIP)",
+  pago_en_hotel: "Pago en el hotel",
+  tarjeta: "Tarjeta",
   yape: "Yape",
   plin: "Plin",
   transferencia: "Transferencia bancaria",
-  pago_en_hotel: "Pago en el hotel",
 };
 
 export const ROOM_STATUS_LABELS: Record<RoomStatus, string> = {

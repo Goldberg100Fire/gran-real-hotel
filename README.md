@@ -9,7 +9,7 @@ Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilid
 - Reserva con acceso por código al correo + documento de identidad único
 - Roles: **jefe** (dueño) y **empleado** (personal autorizado)
 - Panel admin con permisos por rol
-- Pago en línea (Mercado Pago / Yape) desactivado hasta crear la cuenta del dueño
+- Pago con **PagoEfectivo** (código CIP único). Sin Yape ni transferencia para reservar.
 
 ## Seguridad y roles
 
@@ -23,7 +23,7 @@ Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilid
 - Next.js + TypeScript + Tailwind
 - Firestore (inventario y reservas)
 - Resend (correos)
-- Mercado Pago (opcional, más adelante)
+- PagoEfectivo (CIP; se activa con la cuenta del dueño)
 
 ## Arranque local
 

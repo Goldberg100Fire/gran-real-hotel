@@ -33,7 +33,7 @@ export function BookingForm({
   const [sessionDocument, setSessionDocument] = useState<string | null>(null);
   const [needsDocument, setNeedsDocument] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [paymentsReady, setPaymentsReady] = useState(false);
+  const [pagoLive, setPagoLive] = useState(false);
 
   const [roomTypeId, setRoomTypeId] = useState(
     initialTypeId && roomTypes.some((type) => type.id === initialTypeId)
@@ -73,12 +73,12 @@ export function BookingForm({
           setSessionEmail(null);
           setNeedsDocument(false);
         }
-        setPaymentsReady(Boolean(config.mercadopagoConfigured));
+        setPagoLive(Boolean(config.pagoefectivoConfigured));
       })
       .catch(() => {
         setSessionEmail(null);
         setNeedsDocument(false);
-        setPaymentsReady(false);
+        setPagoLive(false);
       })
       .finally(() => {
         window.clearTimeout(timeout);
@@ -119,7 +119,7 @@ export function BookingForm({
     specialRequests,
   };
 
-  async function confirmAtHotel(event: React.FormEvent) {
+  async function generateCip(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setLoading(true);
@@ -127,41 +127,6 @@ export function BookingForm({
     try {
       if (!sessionEmail) {
         throw new Error("Inicia sesión con tu correo para continuar");
-      }
-
-      const response = await fetch("/api/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...payload,
-          paymentMethod: "pago_en_hotel",
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "No se pudo crear la reserva");
-      }
-
-      const code = data.reservation?.code as string | undefined;
-      router.push(code ? `/reservar/exito?code=${encodeURIComponent(code)}` : "/mis-reservas");
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado");
-      setLoading(false);
-    }
-  }
-
-  async function payOnline() {
-    setError(null);
-    setLoading(true);
-
-    try {
-      if (!sessionEmail) {
-        throw new Error("Inicia sesión con tu correo para continuar");
-      }
-      if (!paymentsReady) {
-        throw new Error("El pago en línea se activará más adelante.");
       }
 
       const response = await fetch("/api/reservations/checkout", {
@@ -172,13 +137,16 @@ export function BookingForm({
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "No se pudo iniciar el pago");
-      }
-      if (!data.checkoutUrl) {
-        throw new Error("No se generó la URL de pago");
+        throw new Error(data.error || "No se pudo generar el código CIP");
       }
 
-      window.location.href = data.checkoutUrl;
+      const code = data.reservation?.code as string | undefined;
+      const cip = data.cip?.code as string | undefined;
+      const qs = new URLSearchParams();
+      if (code) qs.set("code", code);
+      if (cip) qs.set("cip", cip);
+      router.push(`/reservar/exito?${qs.toString()}`);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
       setLoading(false);
@@ -217,11 +185,18 @@ export function BookingForm({
   }
 
   return (
-    <form onSubmit={confirmAtHotel} className="space-y-8">
+    <form onSubmit={generateCip} className="space-y-8">
       <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm text-[var(--brand-ink)]">
         Reservando como <strong>{sessionName || sessionEmail}</strong> ·{" "}
-        {sessionEmail}. Te enviaremos el comprobante a este correo.
+        {sessionEmail}. Te enviaremos el código CIP a este correo.
       </div>
+
+      {!pagoLive && (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+          PagoEfectivo se activará con la cuenta del dueño. Por ahora puedes
+          generar un código CIP de prueba para ver el flujo.
+        </p>
+      )}
 
       <section className="space-y-4">
         <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
@@ -337,35 +312,23 @@ export function BookingForm({
         </div>
       </section>
 
-      <div className="flex flex-col gap-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 border border-[var(--brand-line)] bg-white p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm text-[var(--brand-muted)]">
             {Math.max(nights, 1)} noche{nights === 1 ? "" : "s"} ·{" "}
-            {selectedType?.name} · pago en el hotel
+            {selectedType?.name} · PagoEfectivo (código CIP único)
           </p>
           <p className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
             {formatMoney(total)}
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:items-end">
-          <Button
-            type="submit"
-            disabled={loading}
-            className="h-12 rounded-full bg-[var(--brand-deep)] px-8 font-semibold text-white hover:bg-[var(--brand-ink)]"
-          >
-            {loading ? "Confirmando..." : "Confirmar reserva"}
-          </Button>
-          {paymentsReady && (
-            <button
-              type="button"
-              disabled={loading}
-              onClick={payOnline}
-              className="text-sm font-medium text-[var(--brand-muted)] underline underline-offset-4"
-            >
-              O pagar ahora con Yape / tarjeta
-            </button>
-          )}
-        </div>
+        <Button
+          type="submit"
+          disabled={loading}
+          className="h-12 rounded-full bg-[var(--brand-deep)] px-8 font-semibold text-white hover:bg-[var(--brand-ink)]"
+        >
+          {loading ? "Generando CIP..." : "Generar código de pago"}
+        </Button>
       </div>
 
       {error && (

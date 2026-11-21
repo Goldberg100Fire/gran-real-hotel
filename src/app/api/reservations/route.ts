@@ -10,10 +10,7 @@ import {
 import type { PaymentMethod } from "@/lib/types";
 
 const PAYMENT_METHODS: PaymentMethod[] = [
-  "tarjeta",
-  "yape",
-  "plin",
-  "transferencia",
+  "pagoefectivo",
   "pago_en_hotel",
 ];
 

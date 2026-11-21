@@ -529,6 +529,11 @@ export function AdminPanel({
                       <p className="text-xs capitalize text-[var(--brand-muted)]">
                         {reservation.paymentStatus}
                       </p>
+                      {reservation.cipCode && (
+                        <p className="text-xs font-medium text-[var(--brand-ink)]">
+                          CIP {reservation.cipCode}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <select

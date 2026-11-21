@@ -300,6 +300,10 @@ export async function createReservation(input: {
   paymentMethod: PaymentMethod;
   paymentStatus?: Reservation["paymentStatus"];
   status?: ReservationStatus;
+  cipCode?: string;
+  cipUrl?: string | null;
+  cipExpiresAt?: string | null;
+  cipMode?: "live" | "demo";
 }): Promise<Reservation> {
   const store = await readStore();
   const roomType = store.roomTypes.find((type) => type.id === input.roomTypeId);
@@ -313,6 +317,20 @@ export async function createReservation(input: {
   }
 
   const guestEmail = input.guestEmail.trim().toLowerCase();
+
+  // Evitar saturar disponibilidad con muchas reservas pendientes del mismo correo
+  const openPending = store.reservations.filter(
+    (reservation) =>
+      reservation.guestEmail === guestEmail &&
+      reservation.status === "pendiente" &&
+      reservation.paymentStatus === "pendiente",
+  ).length;
+  if (openPending >= 3) {
+    throw new Error(
+      "Ya tienes 3 reservas pendientes de pago. Completa o cancela una antes de crear otra.",
+    );
+  }
+
   const guest = await bindGuestIdentity({
     email: guestEmail,
     name: input.guestName,
@@ -375,6 +393,10 @@ export async function createReservation(input: {
     nights,
     totalAmount,
     createdAt: new Date().toISOString(),
+    cipCode: input.cipCode,
+    cipUrl: input.cipUrl ?? null,
+    cipExpiresAt: input.cipExpiresAt ?? null,
+    cipMode: input.cipMode,
   };
 
   if (assignedRoom && status === "confirmada") {
@@ -401,6 +423,61 @@ export async function confirmReservationPayment(
     if (room) room.status = "ocupada";
   }
 
+  await writeStore(store);
+  return reservation;
+}
+
+export async function confirmReservationByCip(
+  cipCode: string,
+): Promise<Reservation | null> {
+  const store = await readStore();
+  const reservation = store.reservations.find(
+    (item) => item.cipCode === cipCode,
+  );
+  if (!reservation) return null;
+  if (reservation.paymentStatus === "pagado") return reservation;
+
+  reservation.paymentStatus = "pagado";
+  reservation.status = "confirmada";
+  if (reservation.roomId) {
+    const room = store.rooms.find((item) => item.id === reservation.roomId);
+    if (room) room.status = "ocupada";
+  }
+  await writeStore(store);
+  return reservation;
+}
+
+export async function getReservationByCip(
+  cipCode: string,
+): Promise<{ reservation: Reservation; roomType: RoomType } | null> {
+  const store = await readStore();
+  const reservation = store.reservations.find(
+    (item) => item.cipCode === cipCode,
+  );
+  if (!reservation) return null;
+  const roomType = store.roomTypes.find(
+    (type) => type.id === reservation.roomTypeId,
+  );
+  if (!roomType) return null;
+  return { reservation, roomType };
+}
+
+export async function updateReservationCip(
+  id: string,
+  cip: {
+    cipCode: string;
+    cipUrl?: string | null;
+    cipExpiresAt?: string | null;
+    cipMode?: "live" | "demo";
+  },
+): Promise<Reservation> {
+  const store = await readStore();
+  const reservation = store.reservations.find((item) => item.id === id);
+  if (!reservation) throw new Error("Reserva no encontrada");
+  reservation.cipCode = cip.cipCode;
+  reservation.cipUrl = cip.cipUrl ?? null;
+  reservation.cipExpiresAt = cip.cipExpiresAt ?? null;
+  reservation.cipMode = cip.cipMode;
   await writeStore(store);
   return reservation;
 }

@@ -91,6 +91,7 @@ export function buildReservationReceipt(input: {
     `Noches: ${reservation.nights}`,
     `Huéspedes: ${reservation.guests}`,
     `Pago: ${PAYMENT_METHOD_LABELS[reservation.paymentMethod]} (${reservation.paymentStatus})`,
+    reservation.cipCode ? `CIP PagoEfectivo: ${reservation.cipCode}` : "",
     `Total: ${formatMoney(reservation.totalAmount)}`,
     reservation.specialRequests
       ? `Pedidos: ${reservation.specialRequests}`
@@ -114,8 +115,14 @@ export function buildReservationReceipt(input: {
         <p style="font-size:18px;margin:0 0 16px">Hola ${reservation.guestName},</p>
         <p style="margin:0 0 20px;line-height:1.5">Tu reserva en Otuzco quedó confirmada. Guarda este correo como comprobante.</p>
         <div style="background:#f0e8df;border-radius:14px;padding:16px;margin-bottom:20px">
-          <p style="margin:0;font-size:13px;color:#6b5344">Código</p>
+          <p style="margin:0;font-size:13px;color:#6b5344">Código de reserva</p>
           <p style="margin:4px 0 0;font-size:28px;letter-spacing:.08em">${reservation.code}</p>
+          ${
+            reservation.cipCode
+              ? `<p style="margin:16px 0 0;font-size:13px;color:#6b5344">CIP PagoEfectivo</p>
+          <p style="margin:4px 0 0;font-size:26px;letter-spacing:.12em"><strong>${reservation.cipCode}</strong></p>`
+              : ""
+          }
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:14px">
           <tr><td style="padding:8px 0;color:#6b5344">Habitación</td><td style="padding:8px 0;text-align:right"><strong>${roomType.name}</strong></td></tr>

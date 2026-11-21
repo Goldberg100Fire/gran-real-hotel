@@ -95,6 +95,11 @@ export default async function MisReservasPage() {
                       {PAYMENT_METHOD_LABELS[reservation.paymentMethod]} ·{" "}
                       {reservation.paymentStatus}
                     </dd>
+                    {reservation.cipCode && (
+                      <dd className="mt-1 text-xs text-[var(--brand-ink)]">
+                        CIP: <strong>{reservation.cipCode}</strong>
+                      </dd>
+                    )}
                   </div>
                   <div>
                     <dt className="text-[var(--brand-muted)]">Huéspedes</dt>
