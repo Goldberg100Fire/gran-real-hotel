@@ -112,18 +112,24 @@ export function AuthForm({
   }
 
   const cardClass = isStaffPortal
-    ? "space-y-6 rounded-[1.75rem] bg-white p-8 text-[var(--brand-ink)] shadow-[0_24px_60px_-32px_rgba(0,0,0,0.55)]"
+    ? "space-y-5 rounded-2xl bg-white/95 p-7 text-[var(--brand-ink)] shadow-[0_22px_50px_-30px_rgba(44,36,30,0.5)] ring-1 ring-[var(--brand-line)] backdrop-blur-sm"
     : "space-y-6 rounded-[1.75rem] bg-white p-8 shadow-[0_24px_60px_-32px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)]";
 
   return (
     <div className={cardClass}>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--brand-gold)]">
-          Gran Real Hotel
-        </p>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
+        {!isStaffPortal && (
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--brand-gold)]">
+            Gran Real Hotel
+          </p>
+        )}
+        <h2
+          className={`font-[family-name:var(--font-display)] font-extrabold text-[var(--brand-ink)] ${
+            isStaffPortal ? "text-2xl" : "mt-2 text-3xl"
+          }`}
+        >
           {title}
-        </h1>
+        </h2>
         <p className="mt-2 text-sm text-[var(--brand-muted)]">{subtitle}</p>
       </div>
 
