@@ -1,7 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { MessageCircle, Send, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { HOTEL } from "@/lib/hotel-info";
 
 type ChatMessage = {
@@ -10,13 +9,11 @@ type ChatMessage = {
   text: string;
 };
 
-const WELCOME: ChatMessage = {
-  id: "welcome",
-  role: "bot",
-  text: `Hola, soy el asistente de ${HOTEL.name}. Pregúntame por habitaciones, precios o cómo reservar.`,
-};
+const WELCOME_TEXT = `Hola, soy el asistente de ${HOTEL.name}. Pregúntame por habitaciones, precios o cómo reservar.`;
 
 export function PublicChat() {
+  const panelId = useId();
+  const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -27,8 +24,14 @@ export function PublicChat() {
     "Ubicación",
     "Habitaciones",
   ]);
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: "welcome", role: "bot", text: WELCOME_TEXT },
+  ]);
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -81,15 +84,31 @@ export function PublicChat() {
     }
   }
 
-  function onSubmit(event: FormEvent) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void sendMessage(input);
+  }
+
+  if (!mounted) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-gold)] px-4 py-3 text-sm font-bold text-[var(--brand-deep)] shadow-lg"
+          disabled
+          aria-hidden
+        >
+          Consultar
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
       {open && (
         <section
+          id={panelId}
           className="flex h-[min(70vh,520px)] w-[min(100vw-2rem,380px)] flex-col overflow-hidden border border-[var(--brand-line)] bg-[var(--brand-cream)] shadow-[0_24px_60px_-28px_rgba(44,36,30,0.55)]"
           aria-label="Asistente de consultas"
         >
@@ -101,10 +120,10 @@ export function PublicChat() {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-full p-1.5 transition hover:bg-white/10"
-              aria-label="Cerrar chat"
+              className="rounded-full px-2 py-1 text-xs font-semibold transition hover:bg-white/10"
+              aria-label="Cerrar panel de consultas"
             >
-              <X className="size-4" />
+              Cerrar panel
             </button>
           </header>
 
@@ -153,10 +172,9 @@ export function PublicChat() {
               <button
                 type="submit"
                 disabled={pending || !input.trim()}
-                className="inline-flex size-10 items-center justify-center bg-[var(--brand-gold)] text-[var(--brand-deep)] transition hover:brightness-110 disabled:opacity-50"
-                aria-label="Enviar"
+                className="inline-flex h-10 items-center justify-center bg-[var(--brand-gold)] px-3 text-sm font-bold text-[var(--brand-deep)] transition hover:brightness-110 disabled:opacity-50"
               >
-                <Send className="size-4" />
+                Enviar
               </button>
             </form>
             <a
@@ -174,10 +192,9 @@ export function PublicChat() {
         onClick={() => setOpen((value) => !value)}
         className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-gold)] px-4 py-3 text-sm font-bold text-[var(--brand-deep)] shadow-lg transition hover:brightness-110"
         aria-expanded={open}
-        aria-controls="public-chat"
+        aria-controls={panelId}
       >
-        <MessageCircle className="size-4" />
-        {open ? "Cerrar" : "Consultar"}
+        {open ? "Ocultar chat" : "Consultar"}
       </button>
     </div>
   );
