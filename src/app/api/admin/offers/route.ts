@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { canEditPricing, requireStaff } from "@/lib/auth";
+import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import {
   createPriceOffer,
   deletePriceOffer,
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  try {
     const body = await request.json();
     const kind = parseKind(body.kind) ?? "fiesta";
     const offer = await createPriceOffer({
@@ -83,6 +91,13 @@ export async function PATCH(request: Request) {
       { error: "Solo el jefe puede editar ofertas y temporadas" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {
@@ -131,6 +146,13 @@ export async function DELETE(request: Request) {
       { error: "Solo el jefe puede eliminar ofertas" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {

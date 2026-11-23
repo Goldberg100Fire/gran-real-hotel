@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { canCreateRooms, requireStaff } from "@/lib/auth";
+import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import { createRoom, updateRoom } from "@/lib/store";
 import type { RoomStatus } from "@/lib/types";
 
@@ -20,6 +21,13 @@ export async function POST(request: Request) {
       { error: "Solo el jefe puede agregar habitaciones" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {
@@ -46,13 +54,19 @@ export async function PATCH(request: Request) {
   }
 
   try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  try {
     const body = await request.json();
     const id = String(body.id ?? "");
     if (!id) {
       return NextResponse.json({ error: "Falta el id" }, { status: 400 });
     }
 
-    // Empleados: solo estado y notas. Jefe: también tipo/número/piso.
     const isOwner = canCreateRooms(user.role);
     const room = await updateRoom(id, {
       status: STATUSES.includes(body.status) ? body.status : undefined,

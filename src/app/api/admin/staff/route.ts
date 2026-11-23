@@ -5,6 +5,7 @@ import {
   normalizeEmail,
   requireOwner,
 } from "@/lib/auth";
+import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import {
   listStaffMembers,
   setStaffActive,
@@ -34,6 +35,13 @@ export async function POST(request: Request) {
       { error: "Solo el jefe puede agregar personal" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {
@@ -81,6 +89,13 @@ export async function PATCH(request: Request) {
       { error: "Solo el jefe puede modificar personal" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {

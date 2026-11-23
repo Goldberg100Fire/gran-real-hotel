@@ -6,6 +6,8 @@ import {
   getOwnerEmails,
   requireStaff,
 } from "@/lib/auth";
+import { ensureCsrfCookie } from "@/lib/csrf";
+import { redactReservationForStaff } from "@/lib/privacy";
 import { getAdminSnapshot } from "@/lib/store";
 
 export async function GET() {
@@ -14,20 +16,24 @@ export async function GET() {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
 
+  const fullAccess = canManageStaff(user.role);
   const snapshot = await getAdminSnapshot();
+  let csrfToken: string | null = null;
+  try {
+    csrfToken = await ensureCsrfCookie();
+  } catch {
+    csrfToken = null;
+  }
+
   return NextResponse.json({
     ...snapshot,
-    // Empleados no ven lista completa de personal ni correos internos sensibles de OTP
-    staffMembers: canManageStaff(user.role) ? snapshot.staffMembers : [],
-    mailOutbox: canManageStaff(user.role) ? snapshot.mailOutbox : [],
-    guests: canManageStaff(user.role) ? snapshot.guests : snapshot.guests.map((g) => ({
-      document: g.document,
-      email: g.email,
-      name: g.name,
-      phone: g.phone,
-      createdAt: g.createdAt,
-      updatedAt: g.updatedAt,
-    })),
+    staffMembers: fullAccess ? snapshot.staffMembers : [],
+    mailOutbox: fullAccess ? snapshot.mailOutbox : [],
+    guests: fullAccess ? snapshot.guests : [],
+    reservations: snapshot.reservations.map((reservation) =>
+      redactReservationForStaff(reservation, fullAccess),
+    ),
+    csrfToken,
     me: {
       email: user.email,
       name: user.name,
@@ -36,8 +42,9 @@ export async function GET() {
         manageStaff: canManageStaff(user.role),
         editPricing: canEditPricing(user.role),
         createRooms: canCreateRooms(user.role),
+        viewGuestPii: fullAccess,
       },
     },
-    ownersFromSecrets: canManageStaff(user.role) ? getOwnerEmails() : [],
+    ownersFromSecrets: fullAccess ? getOwnerEmails() : [],
   });
 }

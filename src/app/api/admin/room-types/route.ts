@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { canEditPricing, requireStaff } from "@/lib/auth";
+import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import { updateRoomType } from "@/lib/store";
 
 export async function PATCH(request: Request) {
@@ -12,6 +13,13 @@ export async function PATCH(request: Request) {
       { error: "Solo el jefe puede editar tipos y precios" },
       { status: 403 },
     );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {

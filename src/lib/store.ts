@@ -723,10 +723,21 @@ export async function listMailOutbox(): Promise<MailMessage[]> {
 export async function updateReservationStatus(
   id: string,
   status: ReservationStatus,
+  options?: { allowUnpaidConfirm?: boolean },
 ): Promise<Reservation> {
   const store = await readStore();
   const reservation = store.reservations.find((item) => item.id === id);
   if (!reservation) throw new Error("Reserva no encontrada");
+
+  if (status === "confirmada") {
+    const paid = reservation.paymentStatus === "pagado";
+    const cashAtHotel = reservation.paymentMethod === "pago_en_hotel";
+    if (!paid && !cashAtHotel && !options?.allowUnpaidConfirm) {
+      throw new Error(
+        "No se puede confirmar una reserva PagoEfectivo sin pago registrado",
+      );
+    }
+  }
 
   reservation.status = status;
   if ((status === "cancelada" || status === "completada") && reservation.roomId) {

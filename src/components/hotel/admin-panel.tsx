@@ -39,6 +39,7 @@ interface Snapshot {
   guests: GuestProfile[];
   priceOffers: PriceOffer[];
   ownersFromSecrets?: string[];
+  csrfToken?: string | null;
   me?: {
     email: string;
     name: string;
@@ -47,6 +48,7 @@ interface Snapshot {
       manageStaff: boolean;
       editPricing: boolean;
       createRooms: boolean;
+      viewGuestPii?: boolean;
     };
   };
   stats: {
@@ -99,6 +101,7 @@ export function AdminPanel({
   const [offerEnd, setOfferEnd] = useState("");
   const [offerPriority, setOfferPriority] = useState(1);
   const [offerPrices, setOfferPrices] = useState<Record<string, string>>({});
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
@@ -114,6 +117,7 @@ export function AdminPanel({
     }
     const data = (await response.json()) as Snapshot;
     setSnapshot(data);
+    if (data.csrfToken) setCsrfToken(data.csrfToken);
     setNewRoomTypeId((current) => current || data.roomTypes[0]?.id || "");
     setOfferPrices((current) => {
       if (Object.keys(current).length > 0) return current;
@@ -124,6 +128,18 @@ export function AdminPanel({
       return next;
     });
   }, [router]);
+
+  const adminFetch = useCallback(
+    async (url: string, init: RequestInit = {}) => {
+      const headers = new Headers(init.headers);
+      if (!headers.has("Content-Type") && init.body) {
+        headers.set("Content-Type", "application/json");
+      }
+      if (csrfToken) headers.set("x-csrf-token", csrfToken);
+      return fetch(url, { ...init, headers });
+    },
+    [csrfToken],
+  );
 
   useEffect(() => {
     loadSummary().catch((err) =>
@@ -138,9 +154,8 @@ export function AdminPanel({
   }
 
   async function patchRoom(id: string, patch: Record<string, unknown>) {
-    const response = await fetch("/api/admin/rooms", {
+    const response = await adminFetch("/api/admin/rooms", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...patch }),
     });
     const data = await response.json();
@@ -149,9 +164,8 @@ export function AdminPanel({
   }
 
   async function patchRoomType(id: string, patch: Record<string, unknown>) {
-    const response = await fetch("/api/admin/room-types", {
+    const response = await adminFetch("/api/admin/room-types", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...patch }),
     });
     const data = await response.json();
@@ -160,9 +174,8 @@ export function AdminPanel({
   }
 
   async function patchReservation(id: string, status: ReservationStatus) {
-    const response = await fetch("/api/admin/reservations", {
+    const response = await adminFetch("/api/admin/reservations", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
     const data = await response.json();
@@ -173,9 +186,8 @@ export function AdminPanel({
   async function addRoom(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const response = await fetch("/api/admin/rooms", {
+    const response = await adminFetch("/api/admin/rooms", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         number: newRoomNumber,
         floor: newRoomFloor,
@@ -194,9 +206,8 @@ export function AdminPanel({
   async function addStaff(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const response = await fetch("/api/admin/staff", {
+    const response = await adminFetch("/api/admin/staff", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: staffEmail,
         name: staffName,
@@ -216,9 +227,8 @@ export function AdminPanel({
 
   async function toggleStaff(email: string, active: boolean) {
     setError(null);
-    const response = await fetch("/api/admin/staff", {
+    const response = await adminFetch("/api/admin/staff", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, active }),
     });
     const data = await response.json();
@@ -237,9 +247,8 @@ export function AdminPanel({
       const amount = Number(value);
       if (Number.isFinite(amount) && amount > 0) prices[id] = amount;
     }
-    const response = await fetch("/api/admin/offers", {
+    const response = await adminFetch("/api/admin/offers", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: offerTitle,
         description: offerDescription,
@@ -266,9 +275,8 @@ export function AdminPanel({
   }
 
   async function patchOffer(id: string, patch: Record<string, unknown>) {
-    const response = await fetch("/api/admin/offers", {
+    const response = await adminFetch("/api/admin/offers", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...patch }),
     });
     const data = await response.json();
@@ -277,9 +285,8 @@ export function AdminPanel({
   }
 
   async function removeOffer(id: string) {
-    const response = await fetch("/api/admin/offers", {
+    const response = await adminFetch("/api/admin/offers", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
     const data = await response.json();
@@ -306,7 +313,7 @@ export function AdminPanel({
         ? ([["tipos", "Tipos y precios"], ["ofertas", "Ofertas y fiestas"]] as const)
         : []),
       ["reservas", "Reservas"],
-      ["clientes", "Clientes"],
+      ...(permissions.manageStaff ? [["clientes", "Clientes"] as const] : []),
       ...(permissions.manageStaff ? [["personal", "Personal"] as const] : []),
       ...(permissions.manageStaff ? [["correos", "Comprobantes"] as const] : []),
     ] as const

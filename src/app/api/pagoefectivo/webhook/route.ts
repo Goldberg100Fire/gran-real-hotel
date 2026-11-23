@@ -49,20 +49,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
   }
 
-  if (amount != null) {
-    const expected = Number(detail.reservation.totalAmount);
-    if (Math.abs(amount - expected) > 0.05) {
-      console.error("Monto CIP no coincide", {
-        cip,
-        amount,
-        expected,
-        reservationId: detail.reservation.id,
-      });
-      return NextResponse.json(
-        { error: "Monto de pago no coincide con la reserva" },
-        { status: 400 },
-      );
-    }
+  if (amount == null || !Number.isFinite(amount)) {
+    return NextResponse.json(
+      { error: "El webhook no incluye el monto pagado" },
+      { status: 400 },
+    );
+  }
+
+  const expected = Number(detail.reservation.totalAmount);
+  if (Math.abs(amount - expected) > 0.05) {
+    console.error("Monto CIP no coincide", {
+      cip,
+      amount,
+      expected,
+      reservationId: detail.reservation.id,
+    });
+    return NextResponse.json(
+      { error: "Monto de pago no coincide con la reserva" },
+      { status: 400 },
+    );
   }
 
   if (detail.reservation.paymentStatus === "pagado") {

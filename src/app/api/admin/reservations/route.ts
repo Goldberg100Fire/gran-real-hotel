@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireStaff } from "@/lib/auth";
+import { canManageStaff, requireStaff } from "@/lib/auth";
+import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import { updateReservationStatus } from "@/lib/store";
 import type { ReservationStatus } from "@/lib/types";
 
@@ -11,8 +12,16 @@ const STATUSES: ReservationStatus[] = [
 ];
 
 export async function PATCH(request: Request) {
-  if (!(await requireStaff())) {
+  const user = await requireStaff();
+  if (!user) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
   }
 
   try {
@@ -24,7 +33,9 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     }
 
-    const reservation = await updateReservationStatus(id, status);
+    const reservation = await updateReservationStatus(id, status, {
+      allowUnpaidConfirm: canManageStaff(user.role),
+    });
     return NextResponse.json({ reservation });
   } catch (error) {
     const message =
