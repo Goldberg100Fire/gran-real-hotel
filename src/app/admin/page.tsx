@@ -15,7 +15,7 @@ export default async function AdminPage() {
     redirect("/personal?next=/admin");
   }
   if (!isStaffRole(user.role)) {
-    redirect("/mis-reservas");
+    redirect("/");
   }
 
   return (

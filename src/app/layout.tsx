@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Nunito } from "next/font/google";
+import { PublicChat } from "@/components/hotel/public-chat";
 import { SiteFooter } from "@/components/hotel/site-footer";
 import { HOTEL } from "@/lib/hotel-info";
 import "./globals.css";
@@ -21,7 +22,7 @@ export const metadata: Metadata = {
     default: HOTEL.name,
     template: `%s · ${HOTEL.name}`,
   },
-  description: `${HOTEL.tagline}. ${HOTEL.fullAddress}`,
+  description: `${HOTEL.name}: hotel 3 estrellas en ${HOTEL.city}. Habitaciones, contacto y reservas por teléfono. ${HOTEL.fullAddress}`,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <div className="flex-1">{children}</div>
         <SiteFooter />
+        <PublicChat />
       </body>
     </html>
   );

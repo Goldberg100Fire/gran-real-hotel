@@ -20,6 +20,16 @@ export async function POST(request: Request) {
     const phone = String(body.phone ?? "").trim();
     const portal = body.portal === "personal" ? "personal" : "cliente";
 
+    if (portal !== "personal") {
+      return NextResponse.json(
+        {
+          error:
+            "Ya no hay acceso de huéspedes. Usa el chat de consultas o llama al hotel para reservar.",
+        },
+        { status: 410 },
+      );
+    }
+
     if (!email || !code) {
       return NextResponse.json(
         { error: "Correo y código son obligatorios" },

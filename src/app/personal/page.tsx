@@ -22,7 +22,7 @@ export default async function PersonalAccessPage({
     redirect(nextPath);
   }
   if (user && !isStaffRole(user.role)) {
-    redirect("/mis-reservas");
+    redirect("/");
   }
 
   return (
@@ -54,7 +54,7 @@ export default async function PersonalAccessPage({
           Acceso del hotel
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-white/70">
-          Jefe y empleados. Los huéspedes reservan desde el sitio público.
+          Jefe y empleados. El público consulta en la web y reserva por teléfono.
         </p>
         <div className="mt-8">
           <AuthForm

@@ -16,19 +16,32 @@ export function SiteFooter() {
           />
           <p className="mt-4 text-sm leading-relaxed">{HOTEL.fullAddress}</p>
           <p className="mt-2 text-sm">
-            Cel. {HOTEL.phoneMobile} · Telf. {HOTEL.phoneLandline}
+            Cel.{" "}
+            <a href={`tel:${HOTEL.phoneMobile}`} className="hover:text-white">
+              {HOTEL.phoneMobile}
+            </a>{" "}
+            · Telf.{" "}
+            <a
+              href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
+              className="hover:text-white"
+            >
+              {HOTEL.phoneLandline}
+            </a>
+          </p>
+          <p className="mt-3 text-xs text-white/55">
+            Reservas solo por llamada telefónica.
           </p>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
           <Link href="/habitaciones" className="hover:text-white">
             Habitaciones
           </Link>
-          <Link href="/reservar" className="hover:text-white">
-            Reservar
+          <Link href="/#contacto" className="hover:text-white">
+            Contacto
           </Link>
-          <Link href="/acceso" className="hover:text-white">
-            Acceso huéspedes
-          </Link>
+          <a href={`tel:${HOTEL.phoneMobile}`} className="hover:text-white">
+            Llamar
+          </a>
         </div>
       </div>
     </footer>

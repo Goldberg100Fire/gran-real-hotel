@@ -28,33 +28,20 @@ export async function SiteHeader() {
             Habitaciones
           </Link>
           <Link
-            href="/reservar"
+            href="/#contacto"
+            className="hidden transition hover:text-white md:inline"
+          >
+            Contacto
+          </Link>
+          <a
+            href={`tel:${HOTEL.phoneMobile}`}
             className="rounded-full bg-[var(--brand-gold)] px-3.5 py-2 text-[var(--brand-deep)] shadow-sm transition hover:brightness-110 sm:px-4"
           >
-            Reservar
-          </Link>
-          {user ? (
-            <>
-              {!staff && (
-                <Link
-                  href="/mis-reservas"
-                  className="hidden transition hover:text-white md:inline"
-                >
-                  Mis reservas
-                </Link>
-              )}
-              {staff && (
-                <Link
-                  href="/admin"
-                  className="transition hover:text-white"
-                >
-                  Panel
-                </Link>
-              )}
-            </>
-          ) : (
-            <Link href="/acceso" className="transition hover:text-white">
-              Acceder
+            Reservar por teléfono
+          </a>
+          {staff && (
+            <Link href="/admin" className="transition hover:text-white">
+              Panel
             </Link>
           )}
         </nav>

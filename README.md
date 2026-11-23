@@ -1,29 +1,28 @@
 # Gran Real Hotel
 
-Sistema de reservas para **Gran Real Hotel** (Otuzco, La Libertad): disponibilidad, reservas, acceso por correo y panel admin.
+Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, contacto y un bot público de consultas. Las reservas se confirman **solo por teléfono**.
 
 ## Qué incluye
 
-- Sitio público con logo, fotos reales y estilo café/dorado de la marca
-- Consulta de habitaciones Simple, Matrimonial y Doble
-- Reserva con acceso por código al correo + documento de identidad único
-- Roles: **jefe** (dueño) y **empleado** (personal autorizado)
-- Panel admin con permisos por rol
-- Pago con **PagoEfectivo** (código CIP único). Sin Yape ni transferencia para reservar.
+- Página pública con logo, fotos y datos del hotel
+- Habitaciones Simple, Matrimonial y Doble (información y tarifas referenciales)
+- Botón flotante **Consultar** para preguntas sin iniciar sesión
+- Reservas por llamada: Cel. 978113578 · Telf. 044 727074
+- Panel interno del personal en `/personal` (solo correos autorizados)
 
-## Seguridad y roles
+## Cómo reservar
 
-- **Huéspedes:** `/acceso` — correo + DNI/pasaporte (un documento = una cuenta).
-- **Personal (jefe/empleados):** `/personal` — link separado, no aparece en el menú público. Solo correos autorizados.
-- **Jefe:** correos en `ADMIN_ALLOWED_EMAILS`. Precios, habitaciones, personal y comprobantes.
-- **Empleado:** el jefe los autoriza en Admin → Personal.
+1. Revisa habitaciones en la web  
+2. Llama al hotel  
+3. Confirma fechas, precio y forma de pago por teléfono  
+
+No hay login de huéspedes ni reservas online.
 
 ## Stack
 
 - Next.js + TypeScript + Tailwind
-- Firestore (inventario y reservas)
-- Resend (correos)
-- PagoEfectivo (CIP; se activa con la cuenta del dueño)
+- Firestore (inventario; opcional para el panel)
+- Resend (códigos de acceso del personal)
 
 ## Arranque local
 
@@ -34,16 +33,6 @@ npm run dev
 ```
 
 Abre `http://127.0.0.1:3451`. Sin Firebase, la app usa datos locales de ejemplo.
-
-## Base de datos (Firestore)
-
-Guía: [docs/FIRESTORE.md](docs/FIRESTORE.md)
-
-1. Crea el proyecto en Firebase Console  
-2. Activa Firestore (modo producción)  
-3. Publica las reglas de `firestore.rules`  
-4. Configura las variables de la service account  
-5. Ejecuta `npm run seed:firestore`
 
 ## Datos del hotel
 

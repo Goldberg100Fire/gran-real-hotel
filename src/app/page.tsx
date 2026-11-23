@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
-import { SiteHeader } from "@/components/hotel/site-header";
+import { PhoneCta } from "@/components/hotel/phone-cta";
 import { RoomTypeCard } from "@/components/hotel/room-type-card";
+import { SiteHeader } from "@/components/hotel/site-header";
 import { formatMoney } from "@/lib/format";
 import { HOTEL } from "@/lib/hotel-info";
 import { getAvailability } from "@/lib/store";
@@ -10,10 +11,6 @@ import { getAvailability } from "@/lib/store";
 export default async function HomePage() {
   await connection();
   const availability = await getAvailability();
-  const totalAvailable = availability.reduce(
-    (sum, item) => sum + item.availableCount,
-    0,
-  );
   const fromPrice = Math.min(
     ...availability.map((item) => item.roomType.basePrice),
   );
@@ -45,15 +42,10 @@ export default async function HomePage() {
             className="animate-reveal h-auto w-[min(90vw,400px)] drop-shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
           />
           <p className="animate-reveal-delay mt-6 max-w-md text-lg leading-relaxed text-white/90 md:text-xl">
-            {HOTEL.tagline}. Descanso en el corazón de Otuzco.
+            {HOTEL.tagline}. Hotel 3 estrellas en el corazón de Otuzco.
           </p>
           <div className="animate-reveal-delay-2 mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/reservar"
-              className="rounded-full bg-[var(--brand-gold)] px-7 py-3.5 text-sm font-bold text-[var(--brand-deep)] shadow-lg transition hover:brightness-110"
-            >
-              Reservar ahora
-            </Link>
+            <PhoneCta label="Llamar para reservar" />
             <Link
               href="/habitaciones"
               className="rounded-full border border-white/45 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
@@ -67,14 +59,30 @@ export default async function HomePage() {
       <section className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
+            El hotel
+          </p>
+          <h2 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-extrabold text-[var(--brand-ink)] md:text-5xl">
+            Descanso cercano y bien cuidado
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-[var(--brand-muted)] md:text-lg">
+            {HOTEL.name} ofrece hospedaje sencillo y cálido en{" "}
+            {HOTEL.fullAddress}. Conoce nuestras habitaciones, servicios y
+            tarifas; para confirmar tu estadía, solo llama.
+          </p>
+        </div>
+      </section>
+
+      <section className="relative mx-auto max-w-6xl px-6 pb-16 md:pb-20">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
             Otuzco · 3 estrellas
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-extrabold text-[var(--brand-ink)] md:text-5xl">
             Habitaciones
           </h2>
           <p className="mt-3 text-[var(--brand-muted)]">
-            Simple, matrimonial y doble. Hoy hay {totalAvailable} disponibles,
-            desde {formatMoney(fromPrice)} la noche.
+            Simple, matrimonial y doble, desde {formatMoney(fromPrice)} la
+            noche. La disponibilidad se confirma por teléfono.
           </p>
         </div>
 
@@ -93,8 +101,6 @@ export default async function HomePage() {
               <RoomTypeCard
                 roomType={item.roomType}
                 services={item.services}
-                availableCount={item.availableCount}
-                totalRooms={item.totalRooms}
               />
             </div>
           ))}
@@ -133,7 +139,33 @@ export default async function HomePage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-        <div className="grid items-center gap-10 md:grid-cols-2">
+        <div className="grid gap-8 md:grid-cols-2 md:items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
+              Cómo reservar
+            </p>
+            <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
+              Solo por llamada telefónica
+            </h2>
+            <p className="mt-4 text-[var(--brand-muted)]">
+              No hay reservas online ni registro de huéspedes en esta página.
+              Llama, consulta fechas y confirma tu habitación con el hotel.
+            </p>
+            <ol className="mt-6 space-y-3 text-sm text-[var(--brand-ink)]">
+              <li>1. Elige el tipo de habitación que te interesa.</li>
+              <li>2. Llama al celular o al teléfono fijo.</li>
+              <li>3. Confirma fechas, precio y forma de pago.</li>
+            </ol>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <PhoneCta />
+              <a
+                href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
+                className="inline-flex items-center justify-center rounded-full border border-[var(--brand-line)] bg-white px-7 py-3.5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-gold)]"
+              >
+                Fijo {HOTEL.phoneLandline}
+              </a>
+            </div>
+          </div>
           <div className="relative aspect-[4/5] overflow-hidden md:aspect-[5/6]">
             <Image
               src="/hotel/doble.png"
@@ -143,36 +175,40 @@ export default async function HomePage() {
               sizes="(max-width: 768px) 100vw, 50vw"
             />
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
-              Contacto
-            </p>
-            <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
-              Te esperamos en Otuzco
-            </h2>
-            <p className="mt-4 text-[var(--brand-muted)]">{HOTEL.fullAddress}</p>
-            <p className="mt-2 text-[var(--brand-ink)]">
-              <a
-                href={`tel:${HOTEL.phoneMobile}`}
-                className="font-semibold underline-offset-4 hover:underline"
-              >
-                Cel. {HOTEL.phoneMobile}
-              </a>
-              <span className="text-[var(--brand-muted)]"> · </span>
-              <a
-                href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
-                className="underline-offset-4 hover:underline"
-              >
-                Telf. {HOTEL.phoneLandline}
-              </a>
-            </p>
-            <Link
-              href="/reservar"
-              className="mt-8 inline-flex rounded-full bg-[var(--brand-deep)] px-7 py-3.5 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
+        </div>
+      </section>
+
+      <section id="contacto" className="mx-auto max-w-6xl px-6 pb-20">
+        <div className="border-t border-[var(--brand-line)] pt-16">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
+            Contacto
+          </p>
+          <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
+            Te esperamos en Otuzco
+          </h2>
+          <p className="mt-4 max-w-xl text-[var(--brand-muted)]">
+            {HOTEL.fullAddress}
+          </p>
+          <p className="mt-3 text-[var(--brand-ink)]">
+            <a
+              href={`tel:${HOTEL.phoneMobile}`}
+              className="font-semibold underline-offset-4 hover:underline"
             >
-              Reservar estadía
-            </Link>
-          </div>
+              Cel. {HOTEL.phoneMobile}
+            </a>
+            <span className="text-[var(--brand-muted)]"> · </span>
+            <a
+              href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
+              className="underline-offset-4 hover:underline"
+            >
+              Telf. {HOTEL.phoneLandline}
+            </a>
+          </p>
+          <p className="mt-6 max-w-lg text-sm text-[var(--brand-muted)]">
+            También puedes usar el botón <strong>Consultar</strong> en la
+            esquina para preguntar por precios, habitaciones o ubicación sin
+            iniciar sesión.
+          </p>
         </div>
       </section>
     </main>

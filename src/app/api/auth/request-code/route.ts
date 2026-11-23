@@ -27,6 +27,16 @@ export async function POST(request: Request) {
     const email = normalizeEmail(String(body.email ?? ""));
     const portal = body.portal === "personal" ? "personal" : "cliente";
 
+    if (portal !== "personal") {
+      return NextResponse.json(
+        {
+          error:
+            "Ya no hay acceso de huéspedes. Usa el chat de consultas o llama al hotel para reservar.",
+        },
+        { status: 410 },
+      );
+    }
+
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
     }

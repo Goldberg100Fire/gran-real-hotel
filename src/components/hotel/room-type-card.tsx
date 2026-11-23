@@ -1,31 +1,14 @@
 import Image from "next/image";
-import Link from "next/link";
 import { formatMoney } from "@/lib/format";
+import { HOTEL } from "@/lib/hotel-info";
 import type { RoomType, Service } from "@/lib/types";
 
 interface RoomTypeCardProps {
   roomType: RoomType;
   services: Service[];
-  availableCount: number;
-  totalRooms: number;
-  checkIn?: string;
-  checkOut?: string;
 }
 
-export function RoomTypeCard({
-  roomType,
-  services,
-  availableCount,
-  totalRooms,
-  checkIn,
-  checkOut,
-}: RoomTypeCardProps) {
-  const query = new URLSearchParams({
-    tipo: roomType.id,
-    ...(checkIn ? { checkIn } : {}),
-    ...(checkOut ? { checkOut } : {}),
-  });
-
+export function RoomTypeCard({ roomType, services }: RoomTypeCardProps) {
   const serviceLine = services.map((service) => service.name).join(" · ");
 
   return (
@@ -57,14 +40,9 @@ export function RoomTypeCard({
       </div>
       <div className="flex flex-1 flex-col space-y-4 p-6">
         <div>
-          <div className="flex items-start justify-between gap-3">
-            <h3 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
-              {roomType.name}
-            </h3>
-            <span className="shrink-0 text-xs text-[var(--brand-muted)]">
-              {availableCount}/{totalRooms} libres
-            </span>
-          </div>
+          <h3 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
+            {roomType.name}
+          </h3>
           <p className="mt-2 text-sm leading-relaxed text-[var(--brand-muted)]">
             {roomType.description}
           </p>
@@ -79,18 +57,12 @@ export function RoomTypeCard({
           </p>
         )}
         <div className="mt-auto pt-2">
-          {availableCount > 0 ? (
-            <Link
-              href={`/reservar?${query.toString()}`}
-              className="inline-flex w-full items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
-            >
-              Reservar ahora
-            </Link>
-          ) : (
-            <span className="inline-flex w-full items-center justify-center rounded-full bg-[var(--brand-mist)] px-4 py-3 text-sm font-medium text-[var(--brand-muted)]">
-              Sin disponibilidad
-            </span>
-          )}
+          <a
+            href={`tel:${HOTEL.phoneMobile}`}
+            className="inline-flex w-full items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
+          >
+            Llamar para reservar
+          </a>
         </div>
       </div>
     </article>
