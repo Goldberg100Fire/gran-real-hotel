@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth";
 import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import {
+  authorizeStaffPasswordReset,
   listStaffMembers,
   setStaffActive,
   upsertStaffMember,
@@ -113,6 +114,11 @@ export async function PATCH(request: Request) {
         );
       }
       const member = await setStaffActive(email, body.active);
+      return NextResponse.json({ member });
+    }
+
+    if (body.authorizeReset === true) {
+      const member = await authorizeStaffPasswordReset(email);
       return NextResponse.json({ member });
     }
 

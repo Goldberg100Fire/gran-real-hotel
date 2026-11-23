@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
-import { AuthForm } from "@/components/hotel/auth-form";
+import { StaffAuthForm } from "@/components/hotel/staff-auth-form";
 import { getSessionUser, isStaffRole, safeNextPath } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
 
@@ -61,20 +61,13 @@ export default async function PersonalAccessPage({
                 Acceso del hotel
               </h1>
               <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--brand-muted)]">
-                Jefe y empleados. El público consulta en la web y reserva por
-                teléfono.
+                Solo correos que el jefe autorizó. Cada uno usa su propia
+                contraseña; no hay registro público.
               </p>
             </div>
           </div>
 
-          <AuthForm
-            portal="personal"
-            nextPath={nextPath}
-            googleEnabled={false}
-            requireDocument={false}
-            title="Entrar al panel"
-            subtitle="Correo autorizado. Te enviamos un código de 6 dígitos."
-          />
+          <StaffAuthForm nextPath={nextPath} />
         </div>
       </div>
     </main>

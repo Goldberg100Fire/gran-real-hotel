@@ -22,8 +22,11 @@ import type {
   RoomType,
   Service,
   StaffMember,
+  StaffMemberPublic,
   StaffRole,
 } from "./types";
+import { hashPassword, validatePasswordStrength } from "./passwords";
+import { getOwnerEmails, isOwnerEmail, normalizeEmail } from "./auth";
 import { validateOfferDates } from "./pricing";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -1108,19 +1111,83 @@ export async function getGuestByEmail(
   return store.guests.find((guest) => guest.email === normalized) ?? null;
 }
 
+export function toStaffPublic(member: StaffMember): StaffMemberPublic {
+  const { passwordHash: _omit, ...rest } = member;
+  const now = Date.now();
+  const authorizedUntil = member.resetAuthorizedUntil
+    ? Date.parse(member.resetAuthorizedUntil)
+    : 0;
+  return {
+    ...rest,
+    hasPassword: Boolean(passwordHashSafe(member)),
+    resetPending: Boolean(member.resetRequestedAt),
+    resetAuthorized: Number.isFinite(authorizedUntil) && authorizedUntil > now,
+  };
+}
+
+function passwordHashSafe(member: StaffMember): string | undefined {
+  return member.passwordHash || undefined;
+}
+
+/** Asegura registros de jefes definidos en secretos. */
+export async function ensureOwnerStaffRecords(): Promise<void> {
+  const owners = getOwnerEmails();
+  if (owners.length === 0) return;
+  const store = await readStore();
+  let changed = false;
+  for (const email of owners) {
+    const existing = store.staffMembers.find((item) => item.email === email);
+    if (!existing) {
+      store.staffMembers.push({
+        email,
+        name: email.split("@")[0] || "Jefe",
+        role: "jefe",
+        active: true,
+        createdAt: new Date().toISOString(),
+        createdBy: "system",
+      });
+      changed = true;
+    } else if (existing.role !== "jefe" || !existing.active) {
+      existing.role = "jefe";
+      existing.active = true;
+      changed = true;
+    }
+  }
+  if (changed) await writeStore(store);
+}
+
 export async function getStaffByEmail(
   email: string,
 ): Promise<StaffMember | null> {
+  await ensureOwnerStaffRecords();
   const store = await readStore();
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   return (
     store.staffMembers.find((member) => member.email === normalized) ?? null
   );
 }
 
-export async function listStaffMembers(): Promise<StaffMember[]> {
+/**
+ * Personal autorizado y activo (dueños o agregados por el jefe).
+ * No expone el hash.
+ */
+export async function getAuthorizedStaff(
+  email: string,
+): Promise<StaffMember | null> {
+  const member = await getStaffByEmail(email);
+  if (!member || !member.active) return null;
+  if (isOwnerEmail(member.email)) {
+    return { ...member, role: "jefe" };
+  }
+  return member;
+}
+
+export async function listStaffMembers(): Promise<StaffMemberPublic[]> {
+  await ensureOwnerStaffRecords();
   const store = await readStore();
-  return [...store.staffMembers].sort((a, b) => a.email.localeCompare(b.email));
+  return [...store.staffMembers]
+    .sort((a, b) => a.email.localeCompare(b.email))
+    .map(toStaffPublic);
 }
 
 export async function upsertStaffMember(input: {
@@ -1129,9 +1196,9 @@ export async function upsertStaffMember(input: {
   role: StaffRole;
   active?: boolean;
   createdBy: string;
-}): Promise<StaffMember> {
+}): Promise<StaffMemberPublic> {
   const store = await readStore();
-  const email = input.email.trim().toLowerCase();
+  const email = normalizeEmail(input.email);
   if (!email.includes("@")) throw new Error("Correo de personal inválido");
 
   const existing = store.staffMembers.find((member) => member.email === email);
@@ -1140,7 +1207,7 @@ export async function upsertStaffMember(input: {
     existing.role = input.role;
     if (typeof input.active === "boolean") existing.active = input.active;
     await writeStore(store);
-    return existing;
+    return toStaffPublic(existing);
   }
 
   const member: StaffMember = {
@@ -1149,27 +1216,114 @@ export async function upsertStaffMember(input: {
     role: input.role,
     active: input.active ?? true,
     createdAt: new Date().toISOString(),
-    createdBy: input.createdBy.trim().toLowerCase(),
+    createdBy: normalizeEmail(input.createdBy),
   };
   store.staffMembers.push(member);
   await writeStore(store);
-  return member;
+  return toStaffPublic(member);
 }
 
 export async function setStaffActive(
   email: string,
   active: boolean,
-): Promise<StaffMember> {
+): Promise<StaffMemberPublic> {
   const store = await readStore();
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   const member = store.staffMembers.find((item) => item.email === normalized);
   if (!member) throw new Error("Personal no encontrado");
+  if (isOwnerEmail(normalized) && !active) {
+    throw new Error("No se puede desactivar un jefe del secreto ADMIN_ALLOWED_EMAILS");
+  }
   member.active = active;
   await writeStore(store);
-  return member;
+  return toStaffPublic(member);
+}
+
+export async function setStaffPassword(
+  email: string,
+  password: string,
+): Promise<StaffMemberPublic> {
+  const strength = validatePasswordStrength(password);
+  if (strength) throw new Error(strength);
+
+  const store = await readStore();
+  const normalized = normalizeEmail(email);
+  let member = store.staffMembers.find((item) => item.email === normalized);
+
+  if (!member && isOwnerEmail(normalized)) {
+    member = {
+      email: normalized,
+      name: normalized.split("@")[0] || "Jefe",
+      role: "jefe",
+      active: true,
+      createdAt: new Date().toISOString(),
+      createdBy: "system",
+    };
+    store.staffMembers.push(member);
+  }
+
+  if (!member || !member.active) {
+    throw new Error("Personal no autorizado");
+  }
+
+  member.passwordHash = hashPassword(password);
+  member.passwordSetAt = new Date().toISOString();
+  member.resetRequestedAt = null;
+  member.resetAuthorizedUntil = null;
+  await writeStore(store);
+  return toStaffPublic(member);
+}
+
+/** Empleado solicita recuperación (requiere OK del jefe). */
+export async function requestStaffPasswordReset(
+  email: string,
+): Promise<StaffMemberPublic> {
+  const store = await readStore();
+  const normalized = normalizeEmail(email);
+  const member = store.staffMembers.find((item) => item.email === normalized);
+  if (!member || !member.active) {
+    throw new Error("Personal no autorizado");
+  }
+  if (member.role === "jefe" || isOwnerEmail(normalized)) {
+    throw new Error(
+      "El jefe recupera su contraseña desde el enlace de recuperación del login",
+    );
+  }
+  if (!member.passwordHash) {
+    throw new Error("Aún no tienes contraseña. Créala en el primer acceso.");
+  }
+  member.resetRequestedAt = new Date().toISOString();
+  await writeStore(store);
+  return toStaffPublic(member);
+}
+
+/** Jefe autoriza que el empleado cree una nueva contraseña. */
+export async function authorizeStaffPasswordReset(
+  email: string,
+  hours = 24,
+): Promise<StaffMemberPublic> {
+  const store = await readStore();
+  const normalized = normalizeEmail(email);
+  const member = store.staffMembers.find((item) => item.email === normalized);
+  if (!member) throw new Error("Personal no encontrado");
+  if (member.role === "jefe" || isOwnerEmail(normalized)) {
+    throw new Error("Usa la recuperación directa del jefe");
+  }
+  const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  member.resetAuthorizedUntil = until;
+  member.resetRequestedAt = null;
+  await writeStore(store);
+  return toStaffPublic(member);
+}
+
+export function isStaffResetAuthorized(member: StaffMember): boolean {
+  if (!member.resetAuthorizedUntil) return false;
+  const until = Date.parse(member.resetAuthorizedUntil);
+  return Number.isFinite(until) && until > Date.now();
 }
 
 export async function getAdminSnapshot() {
+  await ensureOwnerStaffRecords();
   const store = await readStore();
   const availability = await getAvailability();
 
@@ -1179,7 +1333,7 @@ export async function getAdminSnapshot() {
     services: store.services,
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,
-    staffMembers: store.staffMembers,
+    staffMembers: store.staffMembers.map(toStaffPublic),
     guests: store.guests,
     priceOffers: store.priceOffers,
     availability,

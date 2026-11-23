@@ -26,7 +26,7 @@ import {
   type RoomStatus,
   type RoomType,
   type Service,
-  type StaffMember,
+  type StaffMemberPublic,
   type StaffRole,
   type UserRole,
 } from "@/lib/types";
@@ -37,7 +37,7 @@ interface Snapshot {
   services: Service[];
   reservations: Reservation[];
   mailOutbox: MailMessage[];
-  staffMembers: StaffMember[];
+  staffMembers: StaffMemberPublic[];
   guests: GuestProfile[];
   priceOffers: PriceOffer[];
   ownersFromSecrets?: string[];
@@ -252,6 +252,20 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) {
       setError(data.error || "No se pudo actualizar");
+      return;
+    }
+    await loadSummary();
+  }
+
+  async function authorizeStaffReset(email: string) {
+    setError(null);
+    const response = await adminFetch("/api/admin/staff", {
+      method: "PATCH",
+      body: JSON.stringify({ email, authorizeReset: true }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo autorizar");
       return;
     }
     await loadSummary();
@@ -1288,9 +1302,9 @@ export function AdminPanel({
       {tab === "personal" && permissions.manageStaff && (
         <div className="space-y-6">
           <p className="text-sm text-[var(--brand-muted)]">
-            Solo correos autorizados pueden entrar al panel. Los dueños del
-            secreto <code className="text-xs">ADMIN_ALLOWED_EMAILS</code> son
-            jefes automáticos.
+            Solo tú autorizas correos. Cada persona crea su propia contraseña en
+            el primer acceso. La recuperación automática es solo para el jefe;
+            si un empleado olvida la clave, debe pedirte autorización aquí.
           </p>
           {(snapshot.ownersFromSecrets ?? []).length > 0 && (
             <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
@@ -1339,7 +1353,7 @@ export function AdminPanel({
                 type="submit"
                 className="w-full rounded-full bg-[var(--brand-deep)]"
               >
-                Autorizar
+                Autorizar correo
               </Button>
             </div>
           </form>
@@ -1351,6 +1365,7 @@ export function AdminPanel({
                   <th className="px-4 py-3">Correo</th>
                   <th className="px-4 py-3">Nombre</th>
                   <th className="px-4 py-3">Rol</th>
+                  <th className="px-4 py-3">Contraseña</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3">Acción</th>
                 </tr>
@@ -1359,10 +1374,10 @@ export function AdminPanel({
                 {(snapshot.staffMembers ?? []).length === 0 && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-4 py-8 text-center text-[var(--brand-muted)]"
                     >
-                      Aún no hay personal adicional. Agrega empleados aquí.
+                      Aún no hay personal. Agrega correos aquí.
                     </td>
                   </tr>
                 )}
@@ -1374,19 +1389,45 @@ export function AdminPanel({
                       {STAFF_ROLE_LABELS[member.role]}
                     </td>
                     <td className="px-4 py-3">
+                      {member.resetPending
+                        ? "Pide recuperación"
+                        : member.resetAuthorized
+                          ? "Reset autorizado (24h)"
+                          : member.hasPassword
+                            ? "Creada"
+                            : "Pendiente (primer acceso)"}
+                    </td>
+                    <td className="px-4 py-3">
                       {member.active ? "Activo" : "Desactivado"}
                     </td>
                     <td className="px-4 py-3">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={() =>
-                          toggleStaff(member.email, !member.active)
-                        }
-                      >
-                        {member.active ? "Desactivar" : "Activar"}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        {member.role === "empleado" &&
+                          (member.resetPending || member.hasPassword) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="rounded-full"
+                              onClick={() =>
+                                authorizeStaffReset(member.email).catch(
+                                  (err) => setError(err.message),
+                                )
+                              }
+                            >
+                              Autorizar reset
+                            </Button>
+                          )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-full"
+                          onClick={() =>
+                            toggleStaff(member.email, !member.active)
+                          }
+                        >
+                          {member.active ? "Desactivar" : "Activar"}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

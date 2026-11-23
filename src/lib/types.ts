@@ -28,7 +28,21 @@ export interface StaffMember {
   active: boolean;
   createdAt: string;
   createdBy: string;
+  /** Hash scrypt; nunca se envía al cliente. */
+  passwordHash?: string;
+  passwordSetAt?: string;
+  /** Empleado pidió recuperar contraseña. */
+  resetRequestedAt?: string | null;
+  /** Hasta cuándo el jefe autorizó un cambio sin la contraseña actual. */
+  resetAuthorizedUntil?: string | null;
 }
+
+/** Vista segura del personal para el panel (sin hash). */
+export type StaffMemberPublic = Omit<StaffMember, "passwordHash"> & {
+  hasPassword: boolean;
+  resetPending: boolean;
+  resetAuthorized: boolean;
+};
 
 /** Perfil de huésped: un documento ↔ un correo. */
 export interface GuestProfile {
