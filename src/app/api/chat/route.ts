@@ -45,6 +45,7 @@ export async function POST(request: Request) {
   const result = answerHotelQuestion(message, {
     roomTypes: catalog.roomTypes,
     priceOffers: catalog.priceOffers,
+    services: catalog.services,
   });
   return NextResponse.json(result);
 }

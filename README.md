@@ -5,11 +5,11 @@ Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, co
 ## Qué incluye
 
 - Página pública con logo, fotos y datos del hotel
-- Habitaciones Simple, Matrimonial y Doble (información y tarifas referenciales)
+- Habitaciones Simple, Matrimonial, Doble, Familiar y Suite (foto y servicios por tipo)
 - Botón flotante **Consultar** para preguntas sin iniciar sesión
 - Reservas por llamada: Cel. 978113578 · Telf. 044 727074
 - Panel interno del personal en `/personal` (solo correos autorizados)
-- El **jefe** edita nombres, descripciones y tarifas habituales, y publica **ofertas/fiestas** con precios por fechas
+- El **jefe** crea/edita tipos (foto, precio, servicios), el catálogo de servicios y ofertas/fiestas
 
 ## Cómo reservar
 
@@ -39,8 +39,8 @@ Abre `http://127.0.0.1:3451`. Sin Firebase, la app usa datos locales de ejemplo.
 
 - **Dirección:** Calle Tacna Nº 542 · Otuzco · La Libertad  
 - **Cel.:** 978113578 · **Telf.:** 044 727074  
-- **Habitaciones:** Simple, Matrimonial, Doble  
-- **Servicios:** Baño privado, Agua caliente, TV cable, Wi‑Fi  
+- **Habitaciones:** Simple, Matrimonial, Doble, Familiar, Suite Matrimonial  
+- **Servicios base:** Baño privado, Agua caliente, TV cable, Wi‑Fi (más opciones por tipo)  
 
 ## Scripts
 

@@ -26,14 +26,15 @@ export default async function HabitacionesPage() {
     <main>
       <PageHero
         title="Habitaciones"
-        subtitle="Simple, matrimonial y doble. Todas incluyen baño privado, agua caliente, TV cable y Wi‑Fi."
+        subtitle="Simple, matrimonial, doble, familiar y suite matrimonial. Cada ficha muestra foto, camas y servicios incluidos."
         imageSrc="/hotel/doble.png"
       />
 
       <section className="mx-auto max-w-6xl px-6 py-12 md:py-14">
         <p className="mb-10 max-w-2xl text-[var(--brand-muted)]">
-          Esta página es informativa. Para consultar disponibilidad y reservar,
-          llama al hotel:{" "}
+          Esta página es informativa. Todas incluyen baño privado, agua caliente,
+          TV cable y Wi‑Fi; el resto de servicios varía por tipo. Para consultar
+          disponibilidad y reservar, llama al hotel:{" "}
           <a
             href={`tel:${HOTEL.phoneMobile}`}
             className="font-semibold text-[var(--brand-ink)] underline-offset-4 hover:underline"
@@ -43,7 +44,7 @@ export default async function HabitacionesPage() {
           .
         </p>
 
-        <div className="grid gap-8 md:grid-cols-3">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {availability.map((item) => {
             const resolved = resolveNightlyPrice(
               item.roomType,

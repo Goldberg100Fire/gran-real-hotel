@@ -99,21 +99,21 @@ export default async function HomePage() {
             Habitaciones
           </h2>
           <p className="mt-3 text-[var(--brand-muted)]">
-            Simple, matrimonial y doble, desde {formatMoney(fromPrice)} la
-            noche
-            {activeOffer ? ` (${activeOffer.title})` : ""}. La disponibilidad se
-            confirma por teléfono.
+            Simple, matrimonial, doble, familiar y suite, desde{" "}
+            {formatMoney(fromPrice)} la noche
+            {activeOffer ? ` (${activeOffer.title})` : ""}. Cada tipo muestra su
+            foto y servicios. La disponibilidad se confirma por teléfono.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-8 md:grid-cols-3">
+        <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {priced.map((item, index) => (
             <div
               key={item.roomType.id}
               className={
-                index === 1
+                index % 3 === 1
                   ? "animate-reveal-delay"
-                  : index === 2
+                  : index % 3 === 2
                     ? "animate-reveal-delay-2"
                     : "animate-reveal"
               }
@@ -154,16 +154,25 @@ export default async function HomePage() {
           <h2 className="mt-3 max-w-xl font-[family-name:var(--font-display)] text-3xl font-extrabold md:text-4xl">
             Comodidad sencilla, bien cuidada
           </h2>
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2 md:max-w-2xl">
-            {["Baño privado", "Agua caliente", "TV cable", "Wi‑Fi"].map(
-              (item) => (
-                <li key={item} className="flex items-center gap-3 text-base">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-gold)]" />
-                  {item}
-                </li>
-              ),
-            )}
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 md:max-w-3xl">
+            {[
+              "Baño privado",
+              "Agua caliente",
+              "TV cable",
+              "Wi‑Fi",
+              "Toallas",
+              "Armario",
+            ].map((item) => (
+              <li key={item} className="flex items-center gap-3 text-base">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-gold)]" />
+                {item}
+              </li>
+            ))}
           </ul>
+          <p className="mt-6 max-w-xl text-sm text-white/70">
+            Cada tipo de habitación puede incluir servicios adicionales (escritorio,
+            ambiente familiar o premium). Revísalos en la ficha de cada habitación.
+          </p>
         </div>
       </section>
 

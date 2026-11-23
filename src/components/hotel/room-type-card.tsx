@@ -18,7 +18,6 @@ export function RoomTypeCard({
   offerLabel,
   basePriceLabel = false,
 }: RoomTypeCardProps) {
-  const serviceLine = services.map((service) => service.name).join(" · ");
   const price = displayPrice ?? roomType.basePrice;
   const showBase =
     basePriceLabel && displayPrice != null && displayPrice !== roomType.basePrice;
@@ -73,10 +72,15 @@ export function RoomTypeCard({
           {roomType.bedType} · hasta {roomType.maxGuests} huésped
           {roomType.maxGuests === 1 ? "" : "es"}
         </p>
-        {serviceLine && (
-          <p className="text-xs leading-relaxed text-[var(--brand-muted)]">
-            {serviceLine}
-          </p>
+        {services.length > 0 && (
+          <ul className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--brand-muted)]">
+            {services.map((service) => (
+              <li key={service.id} className="flex items-center gap-1.5">
+                <span className="h-1 w-1 shrink-0 rounded-full bg-[var(--brand-gold)]" />
+                {service.name}
+              </li>
+            ))}
+          </ul>
         )}
         <div className="mt-auto pt-2">
           <a

@@ -1,7 +1,7 @@
 import { formatDate, formatMoney } from "./format";
 import { HOTEL } from "./hotel-info";
 import { listPublicOffers, todayInLima } from "./pricing";
-import type { PriceOffer, RoomType } from "./types";
+import type { PriceOffer, RoomType, Service } from "./types";
 
 export type ChatReply = {
   reply: string;
@@ -11,6 +11,7 @@ export type ChatReply = {
 export type ChatContext = {
   roomTypes: RoomType[];
   priceOffers: PriceOffer[];
+  services?: Service[];
 };
 
 function normalize(text: string): string {
@@ -136,22 +137,29 @@ export function answerHotelQuestion(
       "simple",
       "matrimonial",
       "doble",
+      "familiar",
+      "suite",
       "cama",
       "tipos",
+      "foto",
     ])
   ) {
+    const services = context?.services ?? [];
     const detail =
       roomTypes.length > 0
         ? roomTypes
-            .map(
-              (type) =>
-                `${type.name}: ${type.description} (${formatMoney(type.basePrice)}/noche)`,
-            )
+            .map((type) => {
+              const extras = services
+                .filter((service) => type.serviceIds.includes(service.id))
+                .map((service) => service.name)
+                .join(", ");
+              return `${type.name}: ${type.description} (${formatMoney(type.basePrice)}/noche${extras ? `; servicios: ${extras}` : ""})`;
+            })
             .join(" ")
-        : "Tenemos Simple, Matrimonial y Doble.";
+        : "Tenemos Simple, Matrimonial, Doble, Familiar y Suite Matrimonial.";
     return {
-      reply: `${detail} Todas incluyen baño privado, agua caliente, TV cable y Wi‑Fi.`,
-      suggestions: ["Precios", "Reservar", "Ofertas"],
+      reply: `${detail} En la web también verás la foto de cada tipo.`,
+      suggestions: ["Precios", "Reservar", "Servicios"],
     };
   }
 
@@ -181,12 +189,18 @@ export function answerHotelQuestion(
       "agua",
       "tv",
       "incluye",
+      "toalla",
+      "armario",
     ])
   ) {
+    const services = context?.services ?? [];
+    const catalog =
+      services.length > 0
+        ? `Catálogo de servicios: ${services.map((s) => s.name).join(", ")}.`
+        : "Baño privado, agua caliente, TV cable y Wi‑Fi son la base.";
     return {
-      reply:
-        "En cada habitación: baño privado, agua caliente, TV cable y Wi‑Fi. Si necesitas algo más, consulta al personal al momento de reservar.",
-      suggestions: ["Precios", "Reservar", "Ubicación"],
+      reply: `${catalog} Cada tipo de habitación puede incluir un conjunto distinto; revísalo en Habitaciones o al llamar.`,
+      suggestions: ["Habitaciones", "Precios", "Reservar"],
     };
   }
 

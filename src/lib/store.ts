@@ -6,6 +6,7 @@ import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
 import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
 import { validateGuestDocument } from "./document";
+import { isAllowedRoomImage } from "./hotel-images";
 import type {
   GuestProfile,
   HotelStore,
@@ -34,8 +35,49 @@ type GlobalStore = {
 
 const globalForStore = globalThis as typeof globalThis & GlobalStore;
 
+function ensureCatalog(store: HotelStore): HotelStore {
+  const seed = createSeedStore();
+  const serviceIds = new Set(store.services.map((item) => item.id));
+  for (const service of seed.services) {
+    if (!serviceIds.has(service.id)) {
+      store.services.push(service);
+      serviceIds.add(service.id);
+    }
+  }
+
+  const typeIds = new Set(store.roomTypes.map((item) => item.id));
+  for (const roomType of seed.roomTypes) {
+    if (!typeIds.has(roomType.id)) {
+      store.roomTypes.push(roomType);
+      typeIds.add(roomType.id);
+    } else {
+      const existing = store.roomTypes.find((item) => item.id === roomType.id);
+      if (!existing) continue;
+      if (!existing.imagePath && roomType.imagePath) {
+        existing.imagePath = roomType.imagePath;
+      }
+      // Completa servicios del catálogo semilla sin quitar los que el jefe añadió.
+      const merged = new Set(existing.serviceIds);
+      for (const serviceId of roomType.serviceIds) {
+        if (serviceIds.has(serviceId)) merged.add(serviceId);
+      }
+      existing.serviceIds = [...merged];
+    }
+  }
+
+  const roomNumbers = new Set(store.rooms.map((item) => item.number));
+  for (const room of seed.rooms) {
+    if (!roomNumbers.has(room.number) && typeIds.has(room.roomTypeId)) {
+      store.rooms.push(room);
+      roomNumbers.add(room.number);
+    }
+  }
+
+  return store;
+}
+
 function normalizeStore(store: HotelStore): HotelStore {
-  return {
+  return ensureCatalog({
     ...store,
     reservations: store.reservations ?? [],
     mailOutbox: store.mailOutbox ?? [],
@@ -43,7 +85,7 @@ function normalizeStore(store: HotelStore): HotelStore {
     staffMembers: store.staffMembers ?? [],
     guests: store.guests ?? [],
     priceOffers: store.priceOffers ?? [],
-  };
+  });
 }
 
 function cloneStore(store: HotelStore): HotelStore {
@@ -782,6 +824,7 @@ export async function updateRoomType(
       | "maxGuests"
       | "bedType"
       | "serviceIds"
+      | "imagePath"
     >
   >,
 ): Promise<RoomType> {
@@ -796,14 +839,144 @@ export async function updateRoomType(
     if (!valid) throw new Error("Uno o más servicios no existen");
     roomType.serviceIds = patch.serviceIds;
   }
-  if (typeof patch.name === "string") roomType.name = patch.name;
-  if (typeof patch.description === "string") roomType.description = patch.description;
-  if (typeof patch.basePrice === "number") roomType.basePrice = patch.basePrice;
-  if (typeof patch.maxGuests === "number") roomType.maxGuests = patch.maxGuests;
-  if (typeof patch.bedType === "string") roomType.bedType = patch.bedType;
+  if (typeof patch.name === "string") {
+    const name = patch.name.trim();
+    if (!name) throw new Error("El nombre es obligatorio");
+    roomType.name = name;
+  }
+  if (typeof patch.description === "string") {
+    roomType.description = patch.description.trim();
+  }
+  if (typeof patch.basePrice === "number") {
+    if (!Number.isFinite(patch.basePrice) || patch.basePrice <= 0) {
+      throw new Error("Precio inválido");
+    }
+    roomType.basePrice = Math.round(patch.basePrice);
+  }
+  if (typeof patch.maxGuests === "number") {
+    if (!Number.isFinite(patch.maxGuests) || patch.maxGuests < 1) {
+      throw new Error("Capacidad inválida");
+    }
+    roomType.maxGuests = Math.round(patch.maxGuests);
+  }
+  if (typeof patch.bedType === "string") roomType.bedType = patch.bedType.trim();
+  if (typeof patch.imagePath === "string") {
+    if (!isAllowedRoomImage(patch.imagePath)) {
+      throw new Error("Foto no permitida");
+    }
+    roomType.imagePath = patch.imagePath;
+  }
 
   await writeStore(store);
   return roomType;
+}
+
+export async function createRoomType(input: {
+  name: string;
+  description: string;
+  basePrice: number;
+  maxGuests: number;
+  bedType: string;
+  imagePath: string;
+  serviceIds: string[];
+}): Promise<RoomType> {
+  const name = input.name.trim();
+  if (!name) throw new Error("El nombre es obligatorio");
+  if (!Number.isFinite(input.basePrice) || input.basePrice <= 0) {
+    throw new Error("Precio inválido");
+  }
+  if (!Number.isFinite(input.maxGuests) || input.maxGuests < 1) {
+    throw new Error("Capacidad inválida");
+  }
+  if (!isAllowedRoomImage(input.imagePath)) {
+    throw new Error("Selecciona una foto válida");
+  }
+
+  const store = await readStore();
+  const serviceIds = [...new Set(input.serviceIds.map(String))];
+  const valid = serviceIds.every((serviceId) =>
+    store.services.some((service) => service.id === serviceId),
+  );
+  if (!valid) throw new Error("Uno o más servicios no existen");
+  if (serviceIds.length === 0) {
+    throw new Error("Elige al menos un servicio");
+  }
+
+  const roomType: RoomType = {
+    id: `type-${crypto.randomUUID()}`,
+    name,
+    description: input.description.trim(),
+    basePrice: Math.round(input.basePrice),
+    maxGuests: Math.round(input.maxGuests),
+    bedType: input.bedType.trim() || "1 cama",
+    imageGradient: "from-[#3d3129] via-[#6b5344] to-[#a67b5b]",
+    imagePath: input.imagePath,
+    serviceIds,
+  };
+
+  store.roomTypes.push(roomType);
+  await writeStore(store);
+  return roomType;
+}
+
+export async function createService(input: {
+  name: string;
+  description: string;
+  icon?: string;
+}): Promise<Service> {
+  const name = input.name.trim();
+  if (!name) throw new Error("El nombre del servicio es obligatorio");
+
+  const store = await readStore();
+  const service: Service = {
+    id: `svc-${crypto.randomUUID()}`,
+    name,
+    description: input.description.trim(),
+    icon: (input.icon || "check").trim() || "check",
+  };
+  store.services.push(service);
+  await writeStore(store);
+  return service;
+}
+
+export async function updateService(
+  id: string,
+  patch: Partial<Pick<Service, "name" | "description" | "icon">>,
+): Promise<Service> {
+  const store = await readStore();
+  const service = store.services.find((item) => item.id === id);
+  if (!service) throw new Error("Servicio no encontrado");
+
+  if (typeof patch.name === "string") {
+    const name = patch.name.trim();
+    if (!name) throw new Error("El nombre del servicio es obligatorio");
+    service.name = name;
+  }
+  if (typeof patch.description === "string") {
+    service.description = patch.description.trim();
+  }
+  if (typeof patch.icon === "string") {
+    service.icon = patch.icon.trim() || service.icon;
+  }
+
+  await writeStore(store);
+  return service;
+}
+
+export async function deleteService(id: string): Promise<void> {
+  const store = await readStore();
+  const index = store.services.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Servicio no encontrado");
+
+  const inUse = store.roomTypes.some((type) => type.serviceIds.includes(id));
+  if (inUse) {
+    throw new Error(
+      "Ese servicio está asignado a una habitación. Quítalo primero de los tipos.",
+    );
+  }
+
+  store.services.splice(index, 1);
+  await writeStore(store);
 }
 
 export async function createRoom(input: {
