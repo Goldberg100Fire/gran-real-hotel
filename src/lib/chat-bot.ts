@@ -1,15 +1,17 @@
+import { formatDate, formatMoney } from "./format";
 import { HOTEL } from "./hotel-info";
+import { listPublicOffers, todayInLima } from "./pricing";
+import type { PriceOffer, RoomType } from "./types";
 
 export type ChatReply = {
   reply: string;
   suggestions?: string[];
 };
 
-const PRICES = {
-  simple: 80,
-  matrimonial: 120,
-  doble: 140,
-} as const;
+export type ChatContext = {
+  roomTypes: RoomType[];
+  priceOffers: PriceOffer[];
+};
 
 function normalize(text: string): string {
   return text
@@ -25,24 +27,54 @@ function includesAny(haystack: string, needles: string[]): boolean {
   return needles.some((needle) => haystack.includes(needle));
 }
 
+function priceLines(roomTypes: RoomType[]): string {
+  return roomTypes
+    .map((type) => `${type.name} ${formatMoney(type.basePrice)}`)
+    .join(", ");
+}
+
+function offerSummary(offers: PriceOffer[], roomTypes: RoomType[]): string {
+  if (offers.length === 0) {
+    return "Ahora no hay temporadas especiales publicadas; aplica la tarifa habitual.";
+  }
+  return offers
+    .map((offer) => {
+      const prices = roomTypes
+        .map((type) =>
+          offer.prices[type.id]
+            ? `${type.name} ${formatMoney(offer.prices[type.id])}`
+            : null,
+        )
+        .filter(Boolean)
+        .join(", ");
+      return `${offer.title} (${formatDate(offer.startDate)} al ${formatDate(offer.endDate)}): ${prices}`;
+    })
+    .join(" · ");
+}
+
 /**
  * Bot de consultas públicas del hotel (sin login).
- * Responde con información fija del establecimiento.
  */
-export function answerHotelQuestion(rawMessage: string): ChatReply {
+export function answerHotelQuestion(
+  rawMessage: string,
+  context?: ChatContext,
+): ChatReply {
   const message = normalize(rawMessage);
+  const roomTypes = context?.roomTypes ?? [];
+  const priceOffers = context?.priceOffers ?? [];
+  const { current, upcoming } = listPublicOffers(priceOffers, todayInLima());
 
   if (!message) {
     return {
-      reply: `Hola, soy el asistente de ${HOTEL.name}. Puedo ayudarte con habitaciones, precios, ubicación o cómo reservar.`,
-      suggestions: ["¿Cómo reservo?", "Precios", "Ubicación", "Habitaciones"],
+      reply: `Hola, soy el asistente de ${HOTEL.name}. Puedo ayudarte con habitaciones, precios, fiestas o cómo reservar.`,
+      suggestions: ["¿Cómo reservo?", "Precios", "Ofertas", "Ubicación"],
     };
   }
 
   if (includesAny(message, ["hola", "buenas", "buen dia", "buenos dias", "hey"])) {
     return {
       reply: `¡Hola! Bienvenido a ${HOTEL.name} en ${HOTEL.city}. ¿En qué te ayudo?`,
-      suggestions: ["Reservar", "Habitaciones", "Precios", "Teléfono"],
+      suggestions: ["Reservar", "Habitaciones", "Precios", "Ofertas"],
     };
   }
 
@@ -59,15 +91,42 @@ export function answerHotelQuestion(rawMessage: string): ChatReply {
     ])
   ) {
     return {
-      reply: `Las reservas se hacen solo por teléfono. Llama al celular ${HOTEL.phoneMobile} o al fijo ${HOTEL.phoneLandline}. Te confirmamos disponibilidad y te guiamos en la reserva.`,
-      suggestions: ["Precios", "Habitaciones", "Ubicación"],
+      reply: `Las reservas se hacen solo por teléfono. Llama al celular ${HOTEL.phoneMobile} o al fijo ${HOTEL.phoneLandline}. Te confirmamos disponibilidad y tarifa según las fechas.`,
+      suggestions: ["Precios", "Ofertas", "Habitaciones"],
+    };
+  }
+
+  if (
+    includesAny(message, [
+      "oferta",
+      "fiesta",
+      "temporada",
+      "feriado",
+      "semana santa",
+      "navidad",
+      "año nuevo",
+      "ano nuevo",
+      "patronal",
+    ])
+  ) {
+    return {
+      reply: `Temporadas y fiestas: ${offerSummary([...current, ...upcoming], roomTypes)}`,
+      suggestions: ["Precios", "Reservar", "Habitaciones"],
     };
   }
 
   if (includesAny(message, ["precio", "cuesta", "tarifa", "cuanto", "costo", "soles"])) {
+    const habitual =
+      roomTypes.length > 0
+        ? `Tarifas habituales por noche: ${priceLines(roomTypes)}.`
+        : "Consulta tarifas al llamar.";
+    const special =
+      current.length || upcoming.length
+        ? ` Temporadas: ${offerSummary([...current, ...upcoming], roomTypes)}`
+        : "";
     return {
-      reply: `Tarifas referenciales por noche: Simple S/ ${PRICES.simple}, Matrimonial S/ ${PRICES.matrimonial} y Doble S/ ${PRICES.doble}. El precio final se confirma al llamar.`,
-      suggestions: ["Reservar", "Habitaciones", "Servicios"],
+      reply: `${habitual}${special} El precio final se confirma al llamar.`,
+      suggestions: ["Ofertas", "Reservar", "Habitaciones"],
     };
   }
 
@@ -81,10 +140,18 @@ export function answerHotelQuestion(rawMessage: string): ChatReply {
       "tipos",
     ])
   ) {
+    const detail =
+      roomTypes.length > 0
+        ? roomTypes
+            .map(
+              (type) =>
+                `${type.name}: ${type.description} (${formatMoney(type.basePrice)}/noche)`,
+            )
+            .join(" ")
+        : "Tenemos Simple, Matrimonial y Doble.";
     return {
-      reply:
-        "Tenemos tres tipos: Simple (1 persona), Matrimonial (cama matrimonial, hasta 2 huéspedes) y Doble (2 camas individuales). Todas incluyen baño privado, agua caliente, TV cable y Wi‑Fi.",
-      suggestions: ["Precios", "Reservar", "Servicios"],
+      reply: `${detail} Todas incluyen baño privado, agua caliente, TV cable y Wi‑Fi.`,
+      suggestions: ["Precios", "Reservar", "Ofertas"],
     };
   }
 
@@ -101,7 +168,7 @@ export function answerHotelQuestion(rawMessage: string): ChatReply {
   ) {
     return {
       reply: `Estamos en ${HOTEL.fullAddress}, ${HOTEL.country}.`,
-      suggestions: ["Reservar", "Teléfono", "Habitaciones"],
+      suggestions: ["Reservar", "Precios", "Habitaciones"],
     };
   }
 
@@ -146,7 +213,7 @@ export function answerHotelQuestion(rawMessage: string): ChatReply {
   }
 
   return {
-    reply: `Puedo ayudarte con habitaciones, precios, ubicación y reservas por teléfono (${HOTEL.phoneMobile}). ¿Qué te gustaría saber?`,
-    suggestions: ["¿Cómo reservo?", "Precios", "Ubicación", "Habitaciones"],
+    reply: `Puedo ayudarte con habitaciones, precios, fiestas y reservas por teléfono (${HOTEL.phoneMobile}). ¿Qué te gustaría saber?`,
+    suggestions: ["¿Cómo reservo?", "Precios", "Ofertas", "Habitaciones"],
   };
 }

@@ -55,4 +55,5 @@ export const COLLECTIONS = {
   mailOutbox: "mailOutbox",
   staffMembers: "staffMembers",
   guests: "guests",
+  priceOffers: "priceOffers",
 } as const;

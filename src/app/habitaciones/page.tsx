@@ -1,15 +1,26 @@
+import { OffersSection } from "@/components/hotel/offers-section";
 import { PageHero } from "@/components/hotel/page-hero";
 import { PhoneCta } from "@/components/hotel/phone-cta";
 import { RoomTypeCard } from "@/components/hotel/room-type-card";
 import { HOTEL } from "@/lib/hotel-info";
-import { getAvailability } from "@/lib/store";
+import {
+  listPublicOffers,
+  resolveNightlyPrice,
+  todayInLima,
+} from "@/lib/pricing";
+import { getAvailability, getCatalog } from "@/lib/store";
 
 export const metadata = {
   title: "Habitaciones",
 };
 
 export default async function HabitacionesPage() {
-  const availability = await getAvailability();
+  const [availability, catalog] = await Promise.all([
+    getAvailability(),
+    getCatalog(),
+  ]);
+  const today = todayInLima();
+  const { current, upcoming } = listPublicOffers(catalog.priceOffers, today);
 
   return (
     <main>
@@ -33,19 +44,35 @@ export default async function HabitacionesPage() {
         </p>
 
         <div className="grid gap-8 md:grid-cols-3">
-          {availability.map((item) => (
-            <RoomTypeCard
-              key={item.roomType.id}
-              roomType={item.roomType}
-              services={item.services}
-            />
-          ))}
+          {availability.map((item) => {
+            const resolved = resolveNightlyPrice(
+              item.roomType,
+              catalog.priceOffers,
+              today,
+            );
+            return (
+              <RoomTypeCard
+                key={item.roomType.id}
+                roomType={item.roomType}
+                services={item.services}
+                displayPrice={resolved.price}
+                offerLabel={resolved.offer?.title}
+                basePriceLabel
+              />
+            );
+          })}
         </div>
 
         <div className="mt-14 text-center">
           <PhoneCta />
         </div>
       </section>
+
+      <OffersSection
+        current={current}
+        upcoming={upcoming}
+        roomTypes={catalog.roomTypes}
+      />
     </main>
   );
 }

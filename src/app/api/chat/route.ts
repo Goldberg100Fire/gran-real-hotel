@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { answerHotelQuestion } from "@/lib/chat-bot";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
+import { getCatalog } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -40,6 +41,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = answerHotelQuestion(message);
+  const catalog = await getCatalog();
+  const result = answerHotelQuestion(message, {
+    roomTypes: catalog.roomTypes,
+    priceOffers: catalog.priceOffers,
+  });
   return NextResponse.json(result);
 }

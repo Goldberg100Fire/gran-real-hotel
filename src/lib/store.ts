@@ -12,6 +12,8 @@ import type {
   LoginCode,
   MailMessage,
   PaymentMethod,
+  PriceOffer,
+  PriceOfferKind,
   Reservation,
   ReservationStatus,
   Room,
@@ -21,6 +23,7 @@ import type {
   StaffMember,
   StaffRole,
 } from "./types";
+import { validateOfferDates } from "./pricing";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "hotel.json");
@@ -39,6 +42,7 @@ function normalizeStore(store: HotelStore): HotelStore {
     loginCodes: store.loginCodes ?? [],
     staffMembers: store.staffMembers ?? [],
     guests: store.guests ?? [],
+    priceOffers: store.priceOffers ?? [],
   };
 }
 
@@ -77,6 +81,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     mailSnap,
     staffSnap,
     guestsSnap,
+    offersSnap,
   ] = await Promise.all([
     db.collection(COLLECTIONS.services).get(),
     db.collection(COLLECTIONS.roomTypes).get(),
@@ -86,6 +91,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     db.collection(COLLECTIONS.mailOutbox).orderBy("createdAt", "desc").limit(100).get(),
     db.collection(COLLECTIONS.staffMembers).get(),
     db.collection(COLLECTIONS.guests).get(),
+    db.collection(COLLECTIONS.priceOffers).get(),
   ]);
 
   if (servicesSnap.empty || roomTypesSnap.empty || roomsSnap.empty) {
@@ -103,6 +109,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     mailOutbox: mailSnap.docs.map((doc) => doc.data() as MailMessage),
     staffMembers: staffSnap.docs.map((doc) => doc.data() as StaffMember),
     guests: guestsSnap.docs.map((doc) => doc.data() as GuestProfile),
+    priceOffers: offersSnap.docs.map((doc) => doc.data() as PriceOffer),
   });
 }
 
@@ -123,6 +130,9 @@ export async function seedFirestore(store: HotelStore = createSeedStore()): Prom
   }
   for (const room of store.rooms) {
     batch.set(db.collection(COLLECTIONS.rooms).doc(room.id), room);
+  }
+  for (const offer of store.priceOffers) {
+    batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer);
   }
 
   await batch.commit();
@@ -166,6 +176,9 @@ async function writeFirestoreStore(store: HotelStore): Promise<void> {
   }
   for (const guest of store.guests) {
     batch.set(db.collection(COLLECTIONS.guests).doc(guest.document), guest);
+  }
+  for (const offer of store.priceOffers) {
+    batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer);
   }
 
   await batch.commit();
@@ -224,7 +237,134 @@ export async function getCatalog() {
     services: store.services,
     roomTypes: store.roomTypes,
     rooms: store.rooms,
+    priceOffers: store.priceOffers,
   };
+}
+
+export async function listPriceOffers(): Promise<PriceOffer[]> {
+  const store = await readStore();
+  return [...store.priceOffers].sort((a, b) =>
+    b.startDate.localeCompare(a.startDate),
+  );
+}
+
+function sanitizeOfferPrices(
+  prices: Record<string, number>,
+  roomTypeIds: Set<string>,
+): Record<string, number> {
+  const clean: Record<string, number> = {};
+  for (const [roomTypeId, value] of Object.entries(prices)) {
+    if (!roomTypeIds.has(roomTypeId)) continue;
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    clean[roomTypeId] = Math.round(amount);
+  }
+  return clean;
+}
+
+export async function createPriceOffer(input: {
+  title: string;
+  description: string;
+  kind: PriceOfferKind;
+  startDate: string;
+  endDate: string;
+  active?: boolean;
+  priority?: number;
+  prices: Record<string, number>;
+}): Promise<PriceOffer> {
+  const title = input.title.trim();
+  if (!title) throw new Error("El título es obligatorio");
+
+  const dateError = validateOfferDates(input.startDate, input.endDate);
+  if (dateError) throw new Error(dateError);
+
+  const store = await readStore();
+  const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
+  const prices = sanitizeOfferPrices(input.prices, roomTypeIds);
+  if (Object.keys(prices).length === 0) {
+    throw new Error("Define al menos un precio por tipo de habitación");
+  }
+
+  const now = new Date().toISOString();
+  const offer: PriceOffer = {
+    id: `offer-${crypto.randomUUID()}`,
+    title,
+    description: input.description.trim(),
+    kind: input.kind,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    active: input.active ?? true,
+    priority: Number.isFinite(input.priority) ? Number(input.priority) : 0,
+    prices,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  store.priceOffers.push(offer);
+  await writeStore(store);
+  return offer;
+}
+
+export async function updatePriceOffer(
+  id: string,
+  patch: Partial<
+    Pick<
+      PriceOffer,
+      | "title"
+      | "description"
+      | "kind"
+      | "startDate"
+      | "endDate"
+      | "active"
+      | "priority"
+      | "prices"
+    >
+  >,
+): Promise<PriceOffer> {
+  const store = await readStore();
+  const offer = store.priceOffers.find((item) => item.id === id);
+  if (!offer) throw new Error("Oferta no encontrada");
+
+  const nextStart = patch.startDate ?? offer.startDate;
+  const nextEnd = patch.endDate ?? offer.endDate;
+  const dateError = validateOfferDates(nextStart, nextEnd);
+  if (dateError) throw new Error(dateError);
+
+  if (typeof patch.title === "string") {
+    const title = patch.title.trim();
+    if (!title) throw new Error("El título es obligatorio");
+    offer.title = title;
+  }
+  if (typeof patch.description === "string") {
+    offer.description = patch.description.trim();
+  }
+  if (patch.kind) offer.kind = patch.kind;
+  if (patch.startDate) offer.startDate = patch.startDate;
+  if (patch.endDate) offer.endDate = patch.endDate;
+  if (typeof patch.active === "boolean") offer.active = patch.active;
+  if (typeof patch.priority === "number" && Number.isFinite(patch.priority)) {
+    offer.priority = patch.priority;
+  }
+  if (patch.prices) {
+    const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
+    const prices = sanitizeOfferPrices(patch.prices, roomTypeIds);
+    if (Object.keys(prices).length === 0) {
+      throw new Error("Define al menos un precio por tipo de habitación");
+    }
+    offer.prices = prices;
+  }
+
+  offer.updatedAt = new Date().toISOString();
+  await writeStore(store);
+  return offer;
+}
+
+export async function deletePriceOffer(id: string): Promise<void> {
+  const store = await readStore();
+  const index = store.priceOffers.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Oferta no encontrada");
+  store.priceOffers.splice(index, 1);
+  await writeStore(store);
 }
 
 export async function getAvailability(checkIn?: string, checkOut?: string) {
@@ -857,6 +997,7 @@ export async function getAdminSnapshot() {
     mailOutbox: store.mailOutbox,
     staffMembers: store.staffMembers,
     guests: store.guests,
+    priceOffers: store.priceOffers,
     availability,
     storage: getStorageMode(),
     hotel: HOTEL,
@@ -871,6 +1012,7 @@ export async function getAdminSnapshot() {
       ).length,
       guestsRegistered: store.guests.length,
       staffActive: store.staffMembers.filter((member) => member.active).length,
+      activeOffers: store.priceOffers.filter((offer) => offer.active).length,
     },
   };
 }

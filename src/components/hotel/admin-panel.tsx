@@ -4,16 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { formatDate, formatMoney } from "@/lib/format";
 import { useRouter } from "next/navigation";
 import {
   PAYMENT_METHOD_LABELS,
+  PRICE_OFFER_KIND_LABELS,
   RESERVATION_STATUS_LABELS,
   ROOM_STATUS_LABELS,
   STAFF_ROLE_LABELS,
   USER_ROLE_LABELS,
   type GuestProfile,
   type MailMessage,
+  type PriceOffer,
+  type PriceOfferKind,
   type Reservation,
   type ReservationStatus,
   type Room,
@@ -33,6 +37,7 @@ interface Snapshot {
   mailOutbox: MailMessage[];
   staffMembers: StaffMember[];
   guests: GuestProfile[];
+  priceOffers: PriceOffer[];
   ownersFromSecrets?: string[];
   me?: {
     email: string;
@@ -51,8 +56,11 @@ interface Snapshot {
     activeReservations: number;
     guestsRegistered?: number;
     staffActive?: number;
+    activeOffers?: number;
   };
 }
+
+const OFFER_KINDS = Object.keys(PRICE_OFFER_KIND_LABELS) as PriceOfferKind[];
 
 const ROOM_STATUSES = Object.keys(ROOM_STATUS_LABELS) as RoomStatus[];
 const RES_STATUSES = Object.keys(RESERVATION_STATUS_LABELS) as ReservationStatus[];
@@ -70,7 +78,13 @@ export function AdminPanel({
   const [error, setError] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<
-    "habitaciones" | "tipos" | "reservas" | "correos" | "personal" | "clientes"
+    | "habitaciones"
+    | "tipos"
+    | "ofertas"
+    | "reservas"
+    | "correos"
+    | "personal"
+    | "clientes"
   >("habitaciones");
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomFloor, setNewRoomFloor] = useState(1);
@@ -78,6 +92,13 @@ export function AdminPanel({
   const [staffEmail, setStaffEmail] = useState("");
   const [staffName, setStaffName] = useState("");
   const [staffRole, setStaffRole] = useState<StaffRole>("empleado");
+  const [offerTitle, setOfferTitle] = useState("");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [offerKind, setOfferKind] = useState<PriceOfferKind>("fiesta");
+  const [offerStart, setOfferStart] = useState("");
+  const [offerEnd, setOfferEnd] = useState("");
+  const [offerPriority, setOfferPriority] = useState(1);
+  const [offerPrices, setOfferPrices] = useState<Record<string, string>>({});
 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
@@ -94,6 +115,14 @@ export function AdminPanel({
     const data = (await response.json()) as Snapshot;
     setSnapshot(data);
     setNewRoomTypeId((current) => current || data.roomTypes[0]?.id || "");
+    setOfferPrices((current) => {
+      if (Object.keys(current).length > 0) return current;
+      const next: Record<string, string> = {};
+      for (const type of data.roomTypes) {
+        next[type.id] = String(type.basePrice);
+      }
+      return next;
+    });
   }, [router]);
 
   useEffect(() => {
@@ -200,6 +229,64 @@ export function AdminPanel({
     await loadSummary();
   }
 
+  async function addOffer(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    const prices: Record<string, number> = {};
+    for (const [id, value] of Object.entries(offerPrices)) {
+      const amount = Number(value);
+      if (Number.isFinite(amount) && amount > 0) prices[id] = amount;
+    }
+    const response = await fetch("/api/admin/offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: offerTitle,
+        description: offerDescription,
+        kind: offerKind,
+        startDate: offerStart,
+        endDate: offerEnd,
+        priority: offerPriority,
+        prices,
+        active: true,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo crear la oferta");
+      return;
+    }
+    setOfferTitle("");
+    setOfferDescription("");
+    setOfferKind("fiesta");
+    setOfferStart("");
+    setOfferEnd("");
+    setOfferPriority(1);
+    await loadSummary();
+  }
+
+  async function patchOffer(id: string, patch: Record<string, unknown>) {
+    const response = await fetch("/api/admin/offers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Error al actualizar");
+    await loadSummary();
+  }
+
+  async function removeOffer(id: string) {
+    const response = await fetch("/api/admin/offers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Error al eliminar");
+    await loadSummary();
+  }
+
   if (!snapshot) {
     return (
       <p className="text-center text-[var(--brand-muted)]">Cargando panel...</p>
@@ -215,7 +302,9 @@ export function AdminPanel({
   const tabs = (
     [
       ["habitaciones", "Habitaciones"],
-      ...(permissions.editPricing ? [["tipos", "Tipos y precios"] as const] : []),
+      ...(permissions.editPricing
+        ? ([["tipos", "Tipos y precios"], ["ofertas", "Ofertas y fiestas"]] as const)
+        : []),
       ["reservas", "Reservas"],
       ["clientes", "Clientes"],
       ...(permissions.manageStaff ? [["personal", "Personal"] as const] : []),
@@ -244,7 +333,7 @@ export function AdminPanel({
           ["Habitaciones", snapshot.stats.totalRooms],
           ["Disponibles", snapshot.stats.availableRooms],
           ["Ocupadas", snapshot.stats.occupiedRooms],
-          ["Reservas activas", snapshot.stats.activeReservations],
+          ["Ofertas activas", snapshot.stats.activeOffers ?? snapshot.priceOffers?.filter((o) => o.active).length ?? 0],
         ].map(([label, value]) => (
           <div
             key={label as string}
@@ -418,6 +507,10 @@ export function AdminPanel({
 
       {tab === "tipos" && permissions.editPricing && (
         <div className="grid gap-6">
+          <p className="text-sm text-[var(--brand-muted)]">
+            Tarifa habitual de cada habitación. Para fiestas o temporada alta,
+            usa la pestaña <strong>Ofertas y fiestas</strong>.
+          </p>
           {snapshot.roomTypes.map((type) => (
             <div
               key={type.id}
@@ -436,7 +529,7 @@ export function AdminPanel({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Precio por noche (S/)</Label>
+                  <Label>Precio habitual por noche (S/)</Label>
                   <Input
                     type="number"
                     min={1}
@@ -448,10 +541,35 @@ export function AdminPanel({
                     }
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Descripción</Label>
+                <div className="space-y-2">
+                  <Label>Camas</Label>
                   <Input
+                    defaultValue={type.bedType}
+                    onBlur={(event) =>
+                      patchRoomType(type.id, {
+                        bedType: event.target.value,
+                      }).catch((err) => setError(err.message))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Máx. huéspedes</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    defaultValue={type.maxGuests}
+                    onBlur={(event) =>
+                      patchRoomType(type.id, {
+                        maxGuests: Number(event.target.value),
+                      }).catch((err) => setError(err.message))
+                    }
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Descripción pública</Label>
+                  <Textarea
                     defaultValue={type.description}
+                    rows={3}
                     onBlur={(event) =>
                       patchRoomType(type.id, {
                         description: event.target.value,
@@ -461,10 +579,201 @@ export function AdminPanel({
                 </div>
               </div>
               <p className="text-sm text-[var(--brand-muted)]">
-                Tarifa: {formatMoney(type.basePrice)} / noche
+                Se muestra en la web: {formatMoney(type.basePrice)} / noche
               </p>
             </div>
           ))}
+        </div>
+      )}
+
+      {tab === "ofertas" && permissions.editPricing && (
+        <div className="space-y-8">
+          <form
+            onSubmit={addOffer}
+            className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
+          >
+            <div>
+              <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
+                Nueva temporada u oferta
+              </h3>
+              <p className="mt-1 text-sm text-[var(--brand-muted)]">
+                Ej.: Semana Santa, Fiestas Patronales, Año Nuevo. Define fechas y
+                el precio de cada tipo de habitación.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Título</Label>
+                <Input
+                  value={offerTitle}
+                  onChange={(event) => setOfferTitle(event.target.value)}
+                  placeholder="Semana Santa 2027"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <select
+                  className="h-10 w-full rounded-lg border px-3 text-sm"
+                  value={offerKind}
+                  onChange={(event) =>
+                    setOfferKind(event.target.value as PriceOfferKind)
+                  }
+                >
+                  {OFFER_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {PRICE_OFFER_KIND_LABELS[kind]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Desde</Label>
+                <Input
+                  type="date"
+                  value={offerStart}
+                  onChange={(event) => setOfferStart(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Hasta</Label>
+                <Input
+                  type="date"
+                  value={offerEnd}
+                  onChange={(event) => setOfferEnd(event.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Descripción (visible al público)</Label>
+                <Textarea
+                  value={offerDescription}
+                  onChange={(event) => setOfferDescription(event.target.value)}
+                  placeholder="Precios especiales por fiestas. Reserva con anticipación."
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridad (si se solapan fechas)</Label>
+                <Input
+                  type="number"
+                  value={offerPriority}
+                  onChange={(event) =>
+                    setOfferPriority(Number(event.target.value))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {snapshot.roomTypes.map((type) => (
+                <div key={type.id} className="space-y-2">
+                  <Label>
+                    {type.name} (S/ noche)
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={offerPrices[type.id] ?? ""}
+                    onChange={(event) =>
+                      setOfferPrices((prev) => ({
+                        ...prev,
+                        [type.id]: event.target.value,
+                      }))
+                    }
+                    required
+                  />
+                  <p className="text-xs text-[var(--brand-muted)]">
+                    Habitual: {formatMoney(type.basePrice)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <Button type="submit" className="rounded-full">
+              Guardar oferta
+            </Button>
+          </form>
+
+          <div className="space-y-4">
+            {(snapshot.priceOffers ?? []).length === 0 && (
+              <p className="rounded-2xl bg-white px-5 py-8 text-center text-sm text-[var(--brand-muted)] ring-1 ring-[var(--brand-line)]">
+                Aún no hay ofertas. Crea una para Semana Santa u otras fiestas.
+              </p>
+            )}
+            {(snapshot.priceOffers ?? [])
+              .slice()
+              .sort((a, b) => b.startDate.localeCompare(a.startDate))
+              .map((offer) => (
+                <div
+                  key={offer.id}
+                  className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
+                        {PRICE_OFFER_KIND_LABELS[offer.kind]}
+                        {!offer.active ? " · pausada" : ""}
+                      </p>
+                      <h4 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
+                        {offer.title}
+                      </h4>
+                      <p className="mt-1 text-sm text-[var(--brand-muted)]">
+                        {formatDate(offer.startDate)} → {formatDate(offer.endDate)}
+                      </p>
+                      {offer.description && (
+                        <p className="mt-2 text-sm text-[var(--brand-ink)]">
+                          {offer.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() =>
+                          patchOffer(offer.id, { active: !offer.active }).catch(
+                            (err) => setError(err.message),
+                          )
+                        }
+                      >
+                        {offer.active ? "Pausar" : "Activar"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() =>
+                          removeOffer(offer.id).catch((err) =>
+                            setError(err.message),
+                          )
+                        }
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {snapshot.roomTypes.map((type) => (
+                      <div
+                        key={`${offer.id}-${type.id}`}
+                        className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
+                      >
+                        <p className="font-medium text-[var(--brand-ink)]">
+                          {type.name}
+                        </p>
+                        <p className="text-[var(--brand-muted)]">
+                          {offer.prices[type.id]
+                            ? formatMoney(offer.prices[type.id])
+                            : "Sin precio"}{" "}
+                          / noche
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
         </div>
       )}
 

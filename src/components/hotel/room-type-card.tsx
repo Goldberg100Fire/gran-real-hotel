@@ -6,10 +6,22 @@ import type { RoomType, Service } from "@/lib/types";
 interface RoomTypeCardProps {
   roomType: RoomType;
   services: Service[];
+  displayPrice?: number;
+  offerLabel?: string | null;
+  basePriceLabel?: boolean;
 }
 
-export function RoomTypeCard({ roomType, services }: RoomTypeCardProps) {
+export function RoomTypeCard({
+  roomType,
+  services,
+  displayPrice,
+  offerLabel,
+  basePriceLabel = false,
+}: RoomTypeCardProps) {
   const serviceLine = services.map((service) => service.name).join(" · ");
+  const price = displayPrice ?? roomType.basePrice;
+  const showBase =
+    basePriceLabel && displayPrice != null && displayPrice !== roomType.basePrice;
 
   return (
     <article className="group flex h-full flex-col overflow-hidden bg-white shadow-[0_22px_50px_-34px_rgba(44,36,30,0.55)] ring-1 ring-[var(--brand-line)]">
@@ -26,16 +38,26 @@ export function RoomTypeCard({ roomType, services }: RoomTypeCardProps) {
           <div className={`h-full w-full bg-gradient-to-br ${roomType.imageGradient}`} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+        {offerLabel && (
+          <p className="absolute left-4 top-4 rounded-full bg-[var(--brand-gold)] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-[var(--brand-deep)]">
+            {offerLabel}
+          </p>
+        )}
         <div className="absolute bottom-4 left-4 right-4 text-white">
           <p className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-white/75">
-            Desde
+            {offerLabel ? "Tarifa del periodo" : "Desde"}
           </p>
           <p className="font-[family-name:var(--font-display)] text-3xl font-extrabold">
-            {formatMoney(roomType.basePrice)}
+            {formatMoney(price)}
             <span className="ml-1 text-sm font-sans font-normal text-white/80">
               / noche
             </span>
           </p>
+          {showBase && (
+            <p className="mt-1 text-xs text-white/75">
+              Habitual {formatMoney(roomType.basePrice)}
+            </p>
+          )}
         </div>
       </div>
       <div className="flex flex-1 flex-col space-y-4 p-6">

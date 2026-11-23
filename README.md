@@ -9,6 +9,7 @@ Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, co
 - Botón flotante **Consultar** para preguntas sin iniciar sesión
 - Reservas por llamada: Cel. 978113578 · Telf. 044 727074
 - Panel interno del personal en `/personal` (solo correos autorizados)
+- El **jefe** edita nombres, descripciones y tarifas habituales, y publica **ofertas/fiestas** con precios por fechas
 
 ## Cómo reservar
 

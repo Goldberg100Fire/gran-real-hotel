@@ -21,7 +21,7 @@ export function PublicChat() {
   const [suggestions, setSuggestions] = useState([
     "¿Cómo reservo?",
     "Precios",
-    "Ubicación",
+    "Ofertas",
     "Habitaciones",
   ]);
   const [messages, setMessages] = useState<ChatMessage[]>([

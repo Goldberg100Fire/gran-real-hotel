@@ -59,6 +59,27 @@ export interface RoomType {
   serviceIds: string[];
 }
 
+/** Temporadas, fiestas u ofertas con precios por tipo de habitación. */
+export type PriceOfferKind = "fiesta" | "temporada_alta" | "oferta" | "otro";
+
+export interface PriceOffer {
+  id: string;
+  title: string;
+  description: string;
+  kind: PriceOfferKind;
+  /** YYYY-MM-DD inclusive */
+  startDate: string;
+  /** YYYY-MM-DD inclusive */
+  endDate: string;
+  active: boolean;
+  /** Si hay solape, gana el de mayor prioridad. */
+  priority: number;
+  /** Precio por noche (S/) por id de tipo de habitación. */
+  prices: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Room {
   id: string;
   number: string;
@@ -121,6 +142,7 @@ export interface HotelStore {
   loginCodes: LoginCode[];
   staffMembers: StaffMember[];
   guests: GuestProfile[];
+  priceOffers: PriceOffer[];
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -155,4 +177,11 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
 export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
   empleado: "Empleado",
   jefe: "Jefe / dueño",
+};
+
+export const PRICE_OFFER_KIND_LABELS: Record<PriceOfferKind, string> = {
+  fiesta: "Fiesta / feriado",
+  temporada_alta: "Temporada alta",
+  oferta: "Oferta / promoción",
+  otro: "Otro",
 };

@@ -1,19 +1,37 @@
 import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
+import { OffersSection } from "@/components/hotel/offers-section";
 import { PhoneCta } from "@/components/hotel/phone-cta";
 import { RoomTypeCard } from "@/components/hotel/room-type-card";
 import { SiteHeader } from "@/components/hotel/site-header";
 import { formatMoney } from "@/lib/format";
 import { HOTEL } from "@/lib/hotel-info";
-import { getAvailability } from "@/lib/store";
+import {
+  listPublicOffers,
+  resolveNightlyPrice,
+  todayInLima,
+} from "@/lib/pricing";
+import { getAvailability, getCatalog } from "@/lib/store";
 
 export default async function HomePage() {
   await connection();
-  const availability = await getAvailability();
-  const fromPrice = Math.min(
-    ...availability.map((item) => item.roomType.basePrice),
-  );
+  const [availability, catalog] = await Promise.all([
+    getAvailability(),
+    getCatalog(),
+  ]);
+  const today = todayInLima();
+  const { current, upcoming } = listPublicOffers(catalog.priceOffers, today);
+  const priced = availability.map((item) => {
+    const resolved = resolveNightlyPrice(
+      item.roomType,
+      catalog.priceOffers,
+      today,
+    );
+    return { ...item, resolved };
+  });
+  const fromPrice = Math.min(...priced.map((item) => item.resolved.price));
+  const activeOffer = current[0] ?? null;
 
   return (
     <main>
@@ -82,12 +100,14 @@ export default async function HomePage() {
           </h2>
           <p className="mt-3 text-[var(--brand-muted)]">
             Simple, matrimonial y doble, desde {formatMoney(fromPrice)} la
-            noche. La disponibilidad se confirma por teléfono.
+            noche
+            {activeOffer ? ` (${activeOffer.title})` : ""}. La disponibilidad se
+            confirma por teléfono.
           </p>
         </div>
 
         <div className="mt-10 grid gap-8 md:grid-cols-3">
-          {availability.map((item, index) => (
+          {priced.map((item, index) => (
             <div
               key={item.roomType.id}
               className={
@@ -101,11 +121,20 @@ export default async function HomePage() {
               <RoomTypeCard
                 roomType={item.roomType}
                 services={item.services}
+                displayPrice={item.resolved.price}
+                offerLabel={item.resolved.offer?.title}
+                basePriceLabel
               />
             </div>
           ))}
         </div>
       </section>
+
+      <OffersSection
+        current={current}
+        upcoming={upcoming}
+        roomTypes={catalog.roomTypes}
+      />
 
       <section className="relative overflow-hidden bg-[var(--brand-deep)] text-white">
         <div className="absolute inset-0 opacity-30">
