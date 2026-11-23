@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { HOTEL } from "@/lib/hotel-info";
 
 type ChatMessage = {
@@ -12,9 +12,6 @@ type ChatMessage = {
 const WELCOME_TEXT = `Hola, soy el asistente de ${HOTEL.name}. Pregúntame por habitaciones, precios o cómo reservar.`;
 
 export function PublicChat() {
-  const panelId = useId();
-  const [mounted, setMounted] = useState(false);
-  const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,19 +25,20 @@ export function PublicChat() {
     { id: "welcome", role: "bot", text: WELCOME_TEXT },
   ]);
   const listRef = useRef<HTMLDivElement>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-  }, [messages, open, pending]);
+  }, [messages, pending]);
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || pending) return;
+
+    // Asegura el panel abierto al enviar desde chips
+    if (detailsRef.current && !detailsRef.current.open) {
+      detailsRef.current.open = true;
+    }
 
     setError(null);
     setInput("");
@@ -89,29 +87,14 @@ export function PublicChat() {
     void sendMessage(input);
   }
 
-  if (!mounted) {
-    return (
-      <div className="fixed bottom-4 right-4 z-50 sm:bottom-6 sm:right-6">
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-gold)] px-4 py-3 text-sm font-bold text-[var(--brand-deep)] shadow-lg"
-          disabled
-          aria-hidden
-        >
-          Consultar
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
-      {open && (
-        <section
-          id={panelId}
-          className="flex h-[min(70vh,520px)] w-[min(100vw-2rem,380px)] flex-col overflow-hidden border border-[var(--brand-line)] bg-[var(--brand-cream)] shadow-[0_24px_60px_-28px_rgba(44,36,30,0.55)]"
-          aria-label="Asistente de consultas"
-        >
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col items-end gap-2 sm:bottom-6 sm:right-6">
+      <details
+        ref={detailsRef}
+        id="public-chat"
+        className="group flex flex-col items-end"
+      >
+        <div className="mb-3 hidden h-[min(70vh,520px)] w-[min(100vw-2rem,380px)] flex-col overflow-hidden border border-[var(--brand-line)] bg-[var(--brand-cream)] shadow-[0_24px_60px_-28px_rgba(44,36,30,0.55)] group-open:flex">
           <header className="flex items-center justify-between bg-[var(--brand-deep)] px-4 py-3 text-white">
             <div>
               <p className="text-sm font-semibold">Consultas · {HOTEL.name}</p>
@@ -119,9 +102,10 @@ export function PublicChat() {
             </div>
             <button
               type="button"
-              onClick={() => setOpen(false)}
               className="rounded-full px-2 py-1 text-xs font-semibold transition hover:bg-white/10"
-              aria-label="Cerrar panel de consultas"
+              onClick={() => {
+                if (detailsRef.current) detailsRef.current.open = false;
+              }}
             >
               Cerrar panel
             </button>
@@ -183,19 +167,20 @@ export function PublicChat() {
             >
               Preferir llamada: {HOTEL.phoneMobile}
             </a>
+            <a
+              href="/consultar"
+              className="block text-center text-xs text-[var(--brand-muted)] underline-offset-2 hover:underline"
+            >
+              Abrir consultas en página completa
+            </a>
           </div>
-        </section>
-      )}
+        </div>
 
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex items-center gap-2 rounded-full bg-[var(--brand-gold)] px-4 py-3 text-sm font-bold text-[var(--brand-deep)] shadow-lg transition hover:brightness-110"
-        aria-expanded={open}
-        aria-controls={panelId}
-      >
-        {open ? "Ocultar chat" : "Consultar"}
-      </button>
+        <summary className="list-none cursor-pointer rounded-full bg-[var(--brand-gold)] px-4 py-3 text-sm font-bold text-[var(--brand-deep)] shadow-lg transition hover:brightness-110 [&::-webkit-details-marker]:hidden">
+          <span className="group-open:hidden">Consultar</span>
+          <span className="hidden group-open:inline">Ocultar chat</span>
+        </summary>
+      </details>
     </div>
   );
 }

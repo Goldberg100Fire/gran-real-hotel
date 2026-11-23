@@ -36,6 +36,9 @@ export function SiteFooter() {
           <Link href="/habitaciones" className="hover:text-white">
             Habitaciones
           </Link>
+          <Link href="/consultar" className="hover:text-white">
+            Consultas
+          </Link>
           <Link href="/#contacto" className="hover:text-white">
             Contacto
           </Link>
