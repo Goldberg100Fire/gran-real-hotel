@@ -7,11 +7,15 @@ import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
 import { validateGuestDocument } from "./document";
 import {
+  galleryMediaPath,
   isAllowedRoomImage,
   isStockRoomImage,
   roomTypeMediaPath,
+  seedGalleryImages,
 } from "./hotel-images";
 import type {
+  GalleryImage,
+  GalleryImagePublic,
   GuestProfile,
   HotelStore,
   LoginCode,
@@ -41,6 +45,14 @@ function roomTypeWithoutBlob(roomType: RoomType): RoomType {
   return {
     ...rest,
     imageUpdatedAt: roomType.imageBlob.updatedAt,
+  };
+}
+
+function galleryWithoutBlob(image: GalleryImage): GalleryImagePublic {
+  const { imageBlob: _omit, ...rest } = image;
+  return {
+    ...rest,
+    imageUpdatedAt: image.imageBlob?.updatedAt ?? image.imageUpdatedAt,
   };
 }
 
@@ -91,6 +103,12 @@ function ensureCatalog(store: HotelStore): HotelStore {
     }
   }
 
+  if (!store.galleryImages) store.galleryImages = [];
+  // Solo siembra el catálogo inicial si está vacío (el jefe puede borrar fotos).
+  if (store.galleryImages.length === 0) {
+    store.galleryImages = seedGalleryImages();
+  }
+
   return store;
 }
 
@@ -103,6 +121,7 @@ function normalizeStore(store: HotelStore): HotelStore {
     staffMembers: store.staffMembers ?? [],
     guests: store.guests ?? [],
     priceOffers: store.priceOffers ?? [],
+    galleryImages: store.galleryImages ?? [],
   });
 }
 
@@ -142,6 +161,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     staffSnap,
     guestsSnap,
     offersSnap,
+    gallerySnap,
   ] = await Promise.all([
     db.collection(COLLECTIONS.services).get(),
     db.collection(COLLECTIONS.roomTypes).get(),
@@ -152,6 +172,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     db.collection(COLLECTIONS.staffMembers).get(),
     db.collection(COLLECTIONS.guests).get(),
     db.collection(COLLECTIONS.priceOffers).get(),
+    db.collection(COLLECTIONS.galleryImages).get(),
   ]);
 
   if (servicesSnap.empty || roomTypesSnap.empty || roomsSnap.empty) {
@@ -170,6 +191,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     staffMembers: staffSnap.docs.map((doc) => doc.data() as StaffMember),
     guests: guestsSnap.docs.map((doc) => doc.data() as GuestProfile),
     priceOffers: offersSnap.docs.map((doc) => doc.data() as PriceOffer),
+    galleryImages: gallerySnap.docs.map((doc) => doc.data() as GalleryImage),
   });
 }
 
@@ -193,6 +215,9 @@ export async function seedFirestore(store: HotelStore = createSeedStore()): Prom
   }
   for (const offer of store.priceOffers) {
     batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer);
+  }
+  for (const image of store.galleryImages) {
+    batch.set(db.collection(COLLECTIONS.galleryImages).doc(image.id), image);
   }
 
   await batch.commit();
@@ -239,6 +264,9 @@ async function writeFirestoreStore(store: HotelStore): Promise<void> {
   }
   for (const offer of store.priceOffers) {
     batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer);
+  }
+  for (const image of store.galleryImages ?? []) {
+    batch.set(db.collection(COLLECTIONS.galleryImages).doc(image.id), image);
   }
 
   await batch.commit();
@@ -879,12 +907,16 @@ export async function updateRoomType(
   }
   if (typeof patch.bedType === "string") roomType.bedType = patch.bedType.trim();
   if (typeof patch.imagePath === "string") {
-    if (!isAllowedRoomImage(patch.imagePath)) {
+    const galleryPaths = store.galleryImages.map((image) => image.path);
+    if (!isAllowedRoomImage(patch.imagePath, galleryPaths)) {
       throw new Error("Foto no permitida");
     }
     roomType.imagePath = patch.imagePath;
-    // Al elegir una foto de catálogo, se quita la subida previa.
-    if (isStockRoomImage(patch.imagePath)) {
+    // Al elegir una foto del catálogo, se quita la subida directa del tipo.
+    if (
+      isStockRoomImage(patch.imagePath) ||
+      galleryPaths.includes(patch.imagePath)
+    ) {
       delete roomType.imageBlob;
       delete roomType.imageUpdatedAt;
     }
@@ -936,11 +968,81 @@ export async function clearRoomTypeUploadedImage(
 
   delete roomType.imageBlob;
   delete roomType.imageUpdatedAt;
-  roomType.imagePath = isStockRoomImage(fallbackPath)
-    ? fallbackPath
-    : "/hotel/simple.png";
+  const galleryFallback = store.galleryImages[0]?.path;
+  roomType.imagePath =
+    galleryFallback ||
+    (isStockRoomImage(fallbackPath) ? fallbackPath : "/hotel/simple.png");
   await writeStore(store);
   return roomTypeWithoutBlob(roomType);
+}
+
+export async function listGalleryImages(): Promise<GalleryImagePublic[]> {
+  const store = await readStore();
+  return store.galleryImages.map(galleryWithoutBlob);
+}
+
+export async function getGalleryImageBlob(
+  imageId: string,
+): Promise<RoomTypeImageBlob | null> {
+  const store = await readStore();
+  const image = store.galleryImages.find((item) => item.id === imageId);
+  return image?.imageBlob ?? null;
+}
+
+export async function addGalleryImage(input: {
+  label: string;
+  blob: RoomTypeImageBlob;
+}): Promise<GalleryImagePublic> {
+  const label = input.label.trim() || "Foto habitación";
+  try {
+    const bytes = Buffer.from(input.blob.data, "base64");
+    if (bytes.length < 32) throw new Error("Imagen vacía");
+  } catch {
+    throw new Error("La foto está dañada y no se guardó");
+  }
+
+  const store = await readStore();
+  const id = `gallery-${crypto.randomUUID()}`;
+  const image: GalleryImage = {
+    id,
+    label,
+    path: galleryMediaPath(id),
+    imageBlob: input.blob,
+    imageUpdatedAt: input.blob.updatedAt,
+    createdAt: new Date().toISOString(),
+  };
+  store.galleryImages.push(image);
+  await writeStore(store);
+  return galleryWithoutBlob(image);
+}
+
+export async function deleteGalleryImage(imageId: string): Promise<void> {
+  const store = await readStore();
+  const index = store.galleryImages.findIndex((item) => item.id === imageId);
+  if (index < 0) throw new Error("Foto no encontrada en el catálogo");
+  if (store.galleryImages.length <= 1) {
+    throw new Error("Debe quedar al menos una foto en el catálogo");
+  }
+
+  const [removed] = store.galleryImages.splice(index, 1);
+  const fallback = store.galleryImages[0]!;
+  for (const roomType of store.roomTypes) {
+    if (roomType.imagePath === removed?.path) {
+      roomType.imagePath = fallback.path;
+      delete roomType.imageBlob;
+      delete roomType.imageUpdatedAt;
+    }
+  }
+  await writeStore(store);
+
+  if (isFirestoreConfigured()) {
+    try {
+      const db = getDb();
+      await db.collection(COLLECTIONS.galleryImages).doc(imageId).delete();
+    } catch {
+      // El store ya no la tiene; el doc huérfano se puede ignorar.
+    }
+  }
 }
 
 export async function createRoomType(input: {
@@ -960,11 +1062,12 @@ export async function createRoomType(input: {
   if (!Number.isFinite(input.maxGuests) || input.maxGuests < 1) {
     throw new Error("Capacidad inválida");
   }
-  if (!isAllowedRoomImage(input.imagePath)) {
+  const store = await readStore();
+  const galleryPaths = store.galleryImages.map((image) => image.path);
+  if (!isAllowedRoomImage(input.imagePath, galleryPaths)) {
     throw new Error("Selecciona una foto válida");
   }
 
-  const store = await readStore();
   const serviceIds = [...new Set(input.serviceIds.map(String))];
   const valid = serviceIds.every((serviceId) =>
     store.services.some((service) => service.id === serviceId),
@@ -1399,6 +1502,7 @@ export async function getAdminSnapshot() {
   return {
     rooms: store.rooms,
     roomTypes: store.roomTypes.map(roomTypeWithoutBlob),
+    galleryImages: store.galleryImages.map(galleryWithoutBlob),
     services: store.services,
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,

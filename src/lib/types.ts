@@ -159,6 +159,19 @@ export interface LoginCode {
   createdAt: string;
 }
 
+/** Foto del catálogo del hotel (elegible para cualquier tipo). */
+export interface GalleryImage {
+  id: string;
+  label: string;
+  /** /hotel/... o /api/media/gallery/{id} */
+  path: string;
+  imageBlob?: RoomTypeImageBlob;
+  imageUpdatedAt?: string;
+  createdAt: string;
+}
+
+export type GalleryImagePublic = Omit<GalleryImage, "imageBlob">;
+
 export interface HotelStore {
   services: Service[];
   roomTypes: RoomType[];
@@ -169,6 +182,7 @@ export interface HotelStore {
   staffMembers: StaffMember[];
   guests: GuestProfile[];
   priceOffers: PriceOffer[];
+  galleryImages: GalleryImage[];
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

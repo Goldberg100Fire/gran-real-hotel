@@ -56,4 +56,5 @@ export const COLLECTIONS = {
   staffMembers: "staffMembers",
   guests: "guests",
   priceOffers: "priceOffers",
+  galleryImages: "galleryImages",
 } as const;

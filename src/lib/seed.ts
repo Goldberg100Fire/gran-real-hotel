@@ -1,4 +1,5 @@
 import { HOTEL } from "./hotel-info";
+import { seedGalleryImages } from "./hotel-images";
 import type { HotelStore } from "./types";
 
 export const HOTEL_NAME = HOTEL.name;
@@ -195,5 +196,6 @@ export function createSeedStore(): HotelStore {
     staffMembers: [],
     guests: [],
     priceOffers: [],
+    galleryImages: seedGalleryImages(),
   };
 }

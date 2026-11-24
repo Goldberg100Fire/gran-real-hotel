@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, formatMoney } from "@/lib/format";
-import { HOTEL_ROOM_IMAGES } from "@/lib/hotel-images";
 import { compressImageFile } from "@/lib/image-compress";
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +16,7 @@ import {
   ROOM_STATUS_LABELS,
   STAFF_ROLE_LABELS,
   USER_ROLE_LABELS,
+  type GalleryImagePublic,
   type GuestProfile,
   type MailMessage,
   type PriceOffer,
@@ -35,6 +35,7 @@ import {
 interface Snapshot {
   rooms: Room[];
   roomTypes: RoomType[];
+  galleryImages: GalleryImagePublic[];
   services: Service[];
   reservations: Reservation[];
   mailOutbox: MailMessage[];
@@ -111,12 +112,11 @@ export function AdminPanel({
   const [newTypePrice, setNewTypePrice] = useState("150");
   const [newTypeGuests, setNewTypeGuests] = useState("2");
   const [newTypeBeds, setNewTypeBeds] = useState("1 cama matrimonial");
-  const [newTypeImage, setNewTypeImage] = useState<string>(
-    HOTEL_ROOM_IMAGES[0].path,
-  );
+  const [newTypeImage, setNewTypeImage] = useState<string>("");
   const [newTypeServices, setNewTypeServices] = useState<string[]>([]);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDescription, setNewServiceDescription] = useState("");
+  const [galleryLabel, setGalleryLabel] = useState("");
 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
@@ -145,6 +145,10 @@ export function AdminPanel({
     setNewTypeServices((current) => {
       if (current.length > 0) return current;
       return data.services.slice(0, 4).map((service) => service.id);
+    });
+    setNewTypeImage((current) => {
+      if (current) return current;
+      return data.galleryImages?.[0]?.path || "";
     });
   }, [router]);
 
@@ -249,12 +253,48 @@ export function AdminPanel({
     await loadSummary();
   }
 
-  function roomImageSrc(type: RoomType): string {
-    if (!type.imagePath) return "";
-    if (type.imagePath.startsWith("/api/media/") && type.imageUpdatedAt) {
-      return `${type.imagePath}?v=${encodeURIComponent(type.imageUpdatedAt)}`;
+  async function addGalleryPhoto(file: File) {
+    setError(null);
+    const compressed = await compressImageFile(file);
+    const response = await adminFetch("/api/admin/gallery", {
+      method: "POST",
+      body: JSON.stringify({
+        label: galleryLabel.trim() || file.name.replace(/\.[^.]+$/, ""),
+        contentType: compressed.contentType,
+        data: compressed.dataBase64,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "No se pudo agregar la foto al catálogo");
     }
-    return type.imagePath;
+    setGalleryLabel("");
+    await loadSummary();
+  }
+
+  async function removeGalleryPhoto(imageId: string) {
+    setError(null);
+    const response = await adminFetch("/api/admin/gallery", {
+      method: "DELETE",
+      body: JSON.stringify({ id: imageId }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "No se pudo eliminar la foto");
+    }
+    await loadSummary();
+  }
+
+  function mediaSrc(path: string, updatedAt?: string): string {
+    if (!path) return "";
+    if (path.startsWith("/api/media/") && updatedAt) {
+      return `${path}?v=${encodeURIComponent(updatedAt)}`;
+    }
+    return path;
+  }
+
+  function roomImageSrc(type: RoomType): string {
+    return mediaSrc(type.imagePath || "", type.imageUpdatedAt);
   }
 
   async function patchReservation(id: string, status: ReservationStatus) {
@@ -417,7 +457,7 @@ export function AdminPanel({
     setNewTypePrice("150");
     setNewTypeGuests("2");
     setNewTypeBeds("1 cama matrimonial");
-    setNewTypeImage(HOTEL_ROOM_IMAGES[0].path);
+    setNewTypeImage(snapshot?.galleryImages[0]?.path || "");
     await loadSummary();
   }
 
@@ -695,6 +735,83 @@ export function AdminPanel({
 
       {tab === "tipos" && permissions.editPricing && (
         <div className="space-y-8">
+          <div className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]">
+            <div>
+              <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold">
+                Catálogo de fotos
+              </h3>
+              <p className="mt-1 text-sm text-[var(--brand-muted)]">
+                Agrega o elimina fotos del hotel. Luego asígnalas a cada tipo de
+                habitación. Si borras una foto en uso, la habitación pasa a otra
+                del catálogo.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[180px] flex-1 space-y-2">
+                <Label>Nombre de la foto</Label>
+                <Input
+                  value={galleryLabel}
+                  onChange={(event) => setGalleryLabel(event.target.value)}
+                  placeholder="Ej. Doble con vista"
+                />
+              </div>
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
+                Agregar foto
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+                    addGalleryPhoto(file).catch((err) =>
+                      setError(err.message),
+                    );
+                  }}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {(snapshot.galleryImages ?? []).map((image) => (
+                <div
+                  key={image.id}
+                  className="overflow-hidden rounded-xl ring-1 ring-[var(--brand-line)]"
+                >
+                  <div className="relative aspect-[4/3]">
+                    <Image
+                      src={mediaSrc(image.path, image.imageUpdatedAt)}
+                      alt={image.label}
+                      fill
+                      unoptimized={image.path.startsWith("/api/media/")}
+                      className="object-cover"
+                      sizes="180px"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 bg-[var(--brand-mist)] px-2 py-2">
+                    <p className="truncate text-xs font-medium">{image.label}</p>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
+                      onClick={() =>
+                        removeGalleryPhoto(image.id).catch((err) =>
+                          setError(err.message),
+                        )
+                      }
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(snapshot.galleryImages ?? []).length === 0 && (
+              <p className="text-sm text-[var(--brand-muted)]">
+                No hay fotos. Agrega al menos una para asignar a las habitaciones.
+              </p>
+            )}
+          </div>
+
           <form
             onSubmit={addRoomType}
             className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
@@ -757,11 +874,11 @@ export function AdminPanel({
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Foto</Label>
+              <Label>Foto del catálogo</Label>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {HOTEL_ROOM_IMAGES.map((image) => (
+                {(snapshot.galleryImages ?? []).map((image) => (
                   <button
-                    key={image.path}
+                    key={image.id}
                     type="button"
                     onClick={() => setNewTypeImage(image.path)}
                     className={`overflow-hidden rounded-xl ring-2 ${
@@ -772,9 +889,10 @@ export function AdminPanel({
                   >
                     <div className="relative aspect-[4/3]">
                       <Image
-                        src={image.path}
+                        src={mediaSrc(image.path, image.imageUpdatedAt)}
                         alt={image.label}
                         fill
+                        unoptimized={image.path.startsWith("/api/media/")}
                         className="object-cover"
                         sizes="160px"
                       />
@@ -902,45 +1020,11 @@ export function AdminPanel({
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Foto pública</Label>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
-                      Subir foto nueva
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/*"
-                        className="hidden"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          if (!file) return;
-                          void uploadRoomPhoto(type.id, file);
-                        }}
-                      />
-                    </label>
-                    {type.imagePath?.startsWith("/api/media/") && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={() =>
-                          deleteRoomPhoto(type.id).catch((err) =>
-                            setError(err.message),
-                          )
-                        }
-                      >
-                        Eliminar foto subida
-                      </Button>
-                    )}
-                    <p className="text-xs text-[var(--brand-muted)]">
-                      JPG, PNG o WebP. Si falla la subida, se limpia la foto
-                      para reintentar. También puedes elegir una de ejemplo.
-                    </p>
-                  </div>
+                  <Label>Foto pública (elige del catálogo)</Label>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    {HOTEL_ROOM_IMAGES.map((image) => (
+                    {(snapshot.galleryImages ?? []).map((image) => (
                       <button
-                        key={`${type.id}-${image.path}`}
+                        key={`${type.id}-${image.id}`}
                         type="button"
                         onClick={() =>
                           patchRoomType(type.id, {
@@ -955,9 +1039,10 @@ export function AdminPanel({
                       >
                         <div className="relative aspect-[4/3]">
                           <Image
-                            src={image.path}
+                            src={mediaSrc(image.path, image.imageUpdatedAt)}
                             alt={image.label}
                             fill
+                            unoptimized={image.path.startsWith("/api/media/")}
                             className="object-cover"
                             sizes="140px"
                           />
@@ -965,6 +1050,20 @@ export function AdminPanel({
                       </button>
                     ))}
                   </div>
+                  {type.imagePath?.startsWith("/api/media/room/") && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() =>
+                        deleteRoomPhoto(type.id).catch((err) =>
+                          setError(err.message),
+                        )
+                      }
+                    >
+                      Quitar foto directa de este tipo
+                    </Button>
+                  )}
                 </div>
 
                 <div className="space-y-2">
