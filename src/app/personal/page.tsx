@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { StaffAuthForm } from "@/components/hotel/staff-auth-form";
 import { getSessionUser, isStaffRole, safeNextPath } from "@/lib/auth";
@@ -26,48 +27,59 @@ export default async function PersonalAccessPage({
   }
 
   return (
-    <main className="relative isolate min-h-[100svh] overflow-hidden bg-[var(--brand-cream)]">
+    <main className="relative isolate min-h-[100svh] overflow-hidden bg-[var(--brand-deep)]">
       <div className="pointer-events-none absolute inset-0">
         <Image
           src="/hotel/matrimonial-1.png"
           alt=""
           fill
           priority
-          className="object-cover object-center"
+          className="object-cover object-[center_40%] scale-105"
           sizes="100vw"
         />
-        <div className="absolute inset-0 bg-[linear-gradient(105deg,rgba(247,243,239,0.97)_0%,rgba(247,243,239,0.88)_42%,rgba(44,36,30,0.35)_72%,rgba(44,36,30,0.55)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_40%,rgba(247,243,239,0.5)_0%,transparent_55%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(28,22,18,0.88)_0%,rgba(28,22,18,0.72)_38%,rgba(28,22,18,0.45)_62%,rgba(28,22,18,0.55)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(201,162,39,0.18)_0%,transparent_50%)]" />
       </div>
 
-      <div className="relative mx-auto flex min-h-[100svh] max-w-6xl items-center px-6 py-14 md:px-10">
-        <div className="w-full max-w-md">
-          <div className="mb-8 flex flex-col items-start gap-4">
-            <div className="rounded-2xl bg-[var(--brand-cream)]/95 px-5 py-4 shadow-[0_18px_40px_-28px_rgba(44,36,30,0.45)] ring-1 ring-[var(--brand-line)]/70 backdrop-blur-sm">
-              <Image
-                src={HOTEL.logoPath}
-                alt={HOTEL.name}
-                width={320}
-                height={140}
-                priority
-                className="h-auto w-[min(72vw,260px)] object-contain"
-              />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
-                Solo personal autorizado
+      <div className="relative mx-auto flex min-h-[100svh] w-full max-w-6xl items-center justify-center px-5 py-8 sm:px-8">
+        <div className="w-full max-w-[420px] animate-reveal">
+          <div className="overflow-hidden rounded-3xl bg-[var(--brand-cream)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.65)] ring-1 ring-white/15">
+            <div className="border-b border-[var(--brand-line)]/70 bg-white px-7 pb-5 pt-6 sm:px-8">
+              <div className="flex items-center justify-between gap-3">
+                <Image
+                  src={HOTEL.logoPath}
+                  alt={HOTEL.name}
+                  width={200}
+                  height={88}
+                  priority
+                  className="h-12 w-auto object-contain sm:h-14"
+                />
+                <Link
+                  href="/"
+                  className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--brand-muted)] transition hover:text-[var(--brand-ink)]"
+                >
+                  Sitio web
+                </Link>
+              </div>
+              <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
+                Personal autorizado
               </p>
-              <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
-                Acceso del hotel
+              <h1 className="mt-1.5 font-[family-name:var(--font-display)] text-[1.65rem] font-extrabold leading-tight text-[var(--brand-ink)] sm:text-3xl">
+                Acceso al panel
               </h1>
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--brand-muted)]">
-                Solo correos que el jefe autorizó. Cada uno usa su propia
-                contraseña; no hay registro público.
+              <p className="mt-2 text-sm leading-relaxed text-[var(--brand-muted)]">
+                Correo y contraseña del hotel. Sin registro público.
               </p>
+            </div>
+
+            <div className="px-7 py-6 sm:px-8 sm:py-7">
+              <StaffAuthForm nextPath={nextPath} compact />
             </div>
           </div>
 
-          <StaffAuthForm nextPath={nextPath} />
+          <p className="mt-5 text-center text-xs text-white/55">
+            {HOTEL.name} · {HOTEL.city}
+          </p>
         </div>
       </div>
     </main>

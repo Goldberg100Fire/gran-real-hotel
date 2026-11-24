@@ -527,7 +527,11 @@ export function AdminPanel({
 
   if (!snapshot) {
     return (
-      <p className="text-center text-[var(--brand-muted)]">Cargando panel...</p>
+      <div className="rounded-2xl bg-white px-6 py-16 text-center ring-1 ring-[var(--brand-line)]">
+        <p className="text-sm font-medium text-[var(--brand-muted)]">
+          Cargando panel…
+        </p>
+      </div>
     );
   }
 
@@ -555,59 +559,73 @@ export function AdminPanel({
   );
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <p className="text-sm text-[var(--brand-muted)]">
-            {adminName} · {adminEmail}
-          </p>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--brand-gold)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand-gold)]">
             {USER_ROLE_LABELS[snapshot.me?.role ?? role]}
           </p>
+          <p className="mt-1 text-base font-semibold text-[var(--brand-ink)]">
+            {adminName}
+          </p>
+          <p className="text-sm text-[var(--brand-muted)]">{adminEmail}</p>
         </div>
-        <Button variant="outline" onClick={logout} className="rounded-full">
+        <Button
+          variant="outline"
+          onClick={logout}
+          className="rounded-xl border-[var(--brand-line)]"
+        >
           Cerrar sesión
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["Habitaciones", snapshot.stats.totalRooms],
           ["Disponibles", snapshot.stats.availableRooms],
           ["Ocupadas", snapshot.stats.occupiedRooms],
-          ["Ofertas activas", snapshot.stats.activeOffers ?? snapshot.priceOffers?.filter((o) => o.active).length ?? 0],
+          [
+            "Ofertas activas",
+            snapshot.stats.activeOffers ??
+              snapshot.priceOffers?.filter((o) => o.active).length ??
+              0,
+          ],
         ].map(([label, value]) => (
           <div
             key={label as string}
-            className="rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)]"
+            className="rounded-2xl border border-[var(--brand-line)] bg-white p-5 shadow-[0_12px_30px_-28px_rgba(44,36,30,0.45)]"
           >
-            <p className="text-sm text-[var(--brand-muted)]">{label}</p>
-            <p className="mt-1 font-[family-name:var(--font-display)] text-3xl text-[var(--brand-ink)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+              {label}
+            </p>
+            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
               {value}
             </p>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`rounded-full px-4 py-2 text-sm transition ${
-              tab === key
-                ? "bg-[var(--brand-deep)] text-white"
-                : "bg-white text-[var(--brand-ink)] ring-1 ring-[var(--brand-line)]"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="overflow-x-auto rounded-2xl border border-[var(--brand-line)] bg-white p-1.5 shadow-[0_12px_30px_-28px_rgba(44,36,30,0.45)]">
+        <div className="flex min-w-max gap-1">
+          {tabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                tab === key
+                  ? "bg-[var(--brand-deep)] text-white shadow-sm"
+                  : "text-[var(--brand-muted)] hover:bg-[var(--brand-mist)] hover:text-[var(--brand-ink)]"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
           {error}
         </p>
       )}

@@ -15,7 +15,13 @@ type PublicConfig = {
   storage?: string;
 };
 
-export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
+export function StaffAuthForm({
+  nextPath = "/admin",
+  compact = false,
+}: {
+  nextPath?: string;
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -188,24 +194,30 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
     }
   }
 
+  const shellClass = compact
+    ? "space-y-4 text-[var(--brand-ink)]"
+    : "space-y-5 rounded-2xl bg-white/95 p-7 text-[var(--brand-ink)] shadow-[0_22px_50px_-30px_rgba(44,36,30,0.5)] ring-1 ring-[var(--brand-line)] backdrop-blur-sm";
+
   return (
-    <div className="space-y-5 rounded-2xl bg-white/95 p-7 text-[var(--brand-ink)] shadow-[0_22px_50px_-30px_rgba(44,36,30,0.5)] ring-1 ring-[var(--brand-line)] backdrop-blur-sm">
+    <div className={shellClass}>
       {mode === "login" && (
-        <form onSubmit={onLogin} className="space-y-4">
-          <div>
-            <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold">
-              Entrar al panel
-            </h2>
-            <p className="mt-2 text-sm text-[var(--brand-muted)]">
-              Solo correos autorizados. Correo y contraseña.
-            </p>
-            {configHint && (
-              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
-                {configHint}
+        <form onSubmit={onLogin} className="space-y-3.5">
+          {!compact && (
+            <div>
+              <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold">
+                Entrar al panel
+              </h2>
+              <p className="mt-2 text-sm text-[var(--brand-muted)]">
+                Solo correos autorizados. Correo y contraseña.
               </p>
-            )}
-          </div>
-          <div className="space-y-2">
+            </div>
+          )}
+          {configHint && (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
+              {configHint}
+            </p>
+          )}
+          <div className="space-y-1.5">
             <Label htmlFor="email">Correo</Label>
             <Input
               id="email"
@@ -214,10 +226,10 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="correo@hotel.com"
-              className="h-11 rounded-xl"
+              className="h-11 rounded-xl border-[var(--brand-line)] bg-white"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="password">Contraseña</Label>
             <Input
               id="password"
@@ -226,21 +238,21 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="••••••••"
-              className="h-11 rounded-xl"
+              className="h-11 rounded-xl border-[var(--brand-line)] bg-white"
               autoComplete="current-password"
             />
           </div>
           <Button
             type="submit"
             disabled={loading}
-            className="h-11 w-full rounded-full bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
+            className="h-11 w-full rounded-xl bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
           >
             {loading ? "Entrando..." : "Iniciar sesión"}
           </Button>
-          <div className="flex flex-col gap-2 pt-1 text-sm">
+          <div className="flex flex-col gap-1.5 border-t border-[var(--brand-line)]/80 pt-3 text-[13px]">
             <button
               type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:underline"
+              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
               onClick={() => {
                 setMode("setup");
                 setSetupStep("email");
@@ -251,11 +263,11 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
                 setError(null);
               }}
             >
-              Primer acceso: verificar correo y crear contraseña
+              Primer acceso: crear contraseña
             </button>
             <button
               type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:underline"
+              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
               onClick={() => {
                 setMode("jefe-recover");
                 setJefeStep("email");
@@ -263,18 +275,18 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
                 setError(null);
               }}
             >
-              Soy el jefe y olvidé mi contraseña
+              Olvidé mi contraseña (jefe)
             </button>
             <button
               type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:underline"
+              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
               onClick={() => {
                 setMode("empleado-request");
                 setInfo(null);
                 setError(null);
               }}
             >
-              Soy empleado y olvidé mi contraseña
+              Empleado: solicitar restablecer
             </button>
           </div>
         </form>

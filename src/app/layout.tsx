@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Nunito } from "next/font/google";
 import { PublicChat } from "@/components/hotel/public-chat";
+import { PublicChrome } from "@/components/hotel/public-chrome";
 import { SiteFooter } from "@/components/hotel/site-footer";
 import { HOTEL } from "@/lib/hotel-info";
 import "./globals.css";
@@ -33,8 +34,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col font-sans">
         <div className="flex-1">{children}</div>
-        <SiteFooter />
-        <PublicChat />
+        <PublicChrome>
+          <SiteFooter />
+          <PublicChat />
+        </PublicChrome>
       </body>
     </html>
   );
