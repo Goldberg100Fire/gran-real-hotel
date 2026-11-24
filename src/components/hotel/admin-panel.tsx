@@ -65,7 +65,7 @@ interface Snapshot {
   };
 }
 
-const OFFER_KINDS = Object.keys(PRICE_OFFER_KIND_LABELS) as PriceOfferKind[];
+const OFFER_KINDS: PriceOfferKind[] = ["oferta", "fiesta"];
 
 const ROOM_STATUSES = Object.keys(ROOM_STATUS_LABELS) as RoomStatus[];
 const RES_STATUSES = Object.keys(RESERVATION_STATUS_LABELS) as ReservationStatus[];
@@ -114,11 +114,14 @@ export function AdminPanel({
   const [staffRole, setStaffRole] = useState<StaffRole>("empleado");
   const [offerTitle, setOfferTitle] = useState("");
   const [offerDescription, setOfferDescription] = useState("");
-  const [offerKind, setOfferKind] = useState<PriceOfferKind>("fiesta");
+  const [offerKind, setOfferKind] = useState<PriceOfferKind>("oferta");
   const [offerStart, setOfferStart] = useState("");
   const [offerEnd, setOfferEnd] = useState("");
   const [offerPriority, setOfferPriority] = useState(1);
   const [offerPrices, setOfferPrices] = useState<Record<string, string>>({});
+  const [offerMinNights, setOfferMinNights] = useState("3");
+  const [offerDiscountPercent, setOfferDiscountPercent] = useState("10");
+  const [offerPackageNights, setOfferPackageNights] = useState("2");
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDescription, setNewTypeDescription] = useState("");
@@ -126,6 +129,7 @@ export function AdminPanel({
   const [newTypeGuests, setNewTypeGuests] = useState("2");
   const [newTypeBeds, setNewTypeBeds] = useState("1 cama matrimonial");
   const [newTypeImage, setNewTypeImage] = useState<string>("");
+  const [newTypePhotoFile, setNewTypePhotoFile] = useState<File | null>(null);
   const [newTypeServices, setNewTypeServices] = useState<string[]>([]);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDescription, setNewServiceDescription] = useState("");
@@ -490,6 +494,7 @@ export function AdminPanel({
   async function addOffer(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setInfo(null);
     const prices: Record<string, number> = {};
     for (const [id, value] of Object.entries(offerPrices)) {
       const amount = Number(value);
@@ -504,7 +509,14 @@ export function AdminPanel({
         startDate: offerStart,
         endDate: offerEnd,
         priority: offerPriority,
-        prices,
+        prices: offerKind === "oferta" || offerKind === "fiesta" ? {} : prices,
+        minNights:
+          offerKind === "oferta" ? Number(offerMinNights) : undefined,
+        discountPercent:
+          offerKind === "oferta" ? Number(offerDiscountPercent) : undefined,
+        packageNights:
+          offerKind === "fiesta" ? Number(offerPackageNights) : undefined,
+        packagePrices: offerKind === "fiesta" ? prices : undefined,
         active: true,
       }),
     });
@@ -513,12 +525,17 @@ export function AdminPanel({
       setError(data.error || "No se pudo crear la oferta");
       return;
     }
+    setInfo("Oferta publicada: el público ya puede verla");
     setOfferTitle("");
     setOfferDescription("");
-    setOfferKind("fiesta");
+    setOfferKind("oferta");
     setOfferStart("");
     setOfferEnd("");
     setOfferPriority(1);
+    setOfferMinNights("3");
+    setOfferDiscountPercent("10");
+    setOfferPackageNights("2");
+    setOfferPrices({});
     await loadSummary();
   }
 
@@ -545,30 +562,46 @@ export function AdminPanel({
   async function addRoomType(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const response = await adminFetch("/api/admin/room-types", {
-      method: "POST",
-      body: JSON.stringify({
-        name: newTypeName,
-        description: newTypeDescription,
-        basePrice: Number(newTypePrice),
-        maxGuests: Number(newTypeGuests),
-        bedType: newTypeBeds,
-        imagePath: newTypeImage,
-        serviceIds: newTypeServices,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setError(data.error || "No se pudo crear el tipo");
+    setInfo(null);
+    if (!newTypePhotoFile) {
+      setError("Sube una foto propia para este tipo de habitación");
       return;
     }
-    setNewTypeName("");
-    setNewTypeDescription("");
-    setNewTypePrice("150");
-    setNewTypeGuests("2");
-    setNewTypeBeds("1 cama matrimonial");
-    setNewTypeImage(snapshot?.galleryImages[0]?.path || "");
-    await loadSummary();
+    setRoomBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/room-types", {
+        method: "POST",
+        body: JSON.stringify({
+          name: newTypeName,
+          description: newTypeDescription,
+          basePrice: Number(newTypePrice),
+          maxGuests: Number(newTypeGuests),
+          bedType: newTypeBeds,
+          imagePath: "",
+          serviceIds: newTypeServices,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "No se pudo crear el tipo");
+        return;
+      }
+      const createdId = data.roomType?.id as string | undefined;
+      if (createdId && newTypePhotoFile) {
+        await uploadRoomPhoto(createdId, newTypePhotoFile);
+      }
+      setInfo(`Tipo “${newTypeName}” creado con su foto`);
+      setNewTypeName("");
+      setNewTypeDescription("");
+      setNewTypePrice("150");
+      setNewTypeGuests("2");
+      setNewTypeBeds("1 cama matrimonial");
+      setNewTypeImage("");
+      setNewTypePhotoFile(null);
+      await loadSummary();
+    } finally {
+      setRoomBusy(false);
+    }
   }
 
   async function toggleTypeService(typeId: string, serviceId: string) {
@@ -1281,47 +1314,26 @@ export function AdminPanel({
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Foto inicial (opcional)</Label>
+              <Label>Foto propia (obligatoria)</Label>
               <p className="text-xs text-[var(--brand-muted)]">
-                Después de crear el tipo podrás agregar y eliminar fotos solo
-                para esa habitación.
+                Cada tipo nuevo lleva su propia foto. Luego podrás agregar más
+                en la galería de ese tipo.
               </p>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {(snapshot.galleryImages ?? [])
-                  .filter((image) => !image.roomTypeId)
-                  .concat(
-                    (snapshot.galleryImages ?? []).filter((image) =>
-                      Boolean(image.roomTypeId),
-                    ),
-                  )
-                  .slice(0, 8)
-                  .map((image) => (
-                    <button
-                      key={image.id}
-                      type="button"
-                      onClick={() => setNewTypeImage(image.path)}
-                      className={`overflow-hidden rounded-xl ring-2 ${
-                        newTypeImage === image.path
-                          ? "ring-[var(--brand-gold)]"
-                          : "ring-transparent"
-                      }`}
-                    >
-                      <div className="relative aspect-[4/3]">
-                        <Image
-                          src={mediaSrc(image.path, image.imageUpdatedAt)}
-                          alt={image.label}
-                          fill
-                          unoptimized={image.path.startsWith("/api/media/")}
-                          className="object-cover"
-                          sizes="160px"
-                        />
-                      </div>
-                      <p className="bg-[var(--brand-mist)] px-2 py-1 text-xs">
-                        {image.label}
-                      </p>
-                    </button>
-                  ))}
-              </div>
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="h-10 cursor-pointer bg-white file:mr-3 file:rounded-md file:border-0 file:bg-[var(--brand-deep)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setNewTypePhotoFile(file);
+                }}
+                required
+              />
+              {newTypePhotoFile ? (
+                <p className="text-xs text-[var(--brand-ink)]">
+                  Seleccionada: {newTypePhotoFile.name}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Servicios incluidos</Label>
@@ -1634,20 +1646,21 @@ export function AdminPanel({
         <div className="space-y-8">
           <form
             onSubmit={addOffer}
-            className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
+            className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-6"
           >
             <div>
               <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
-                Nueva temporada u oferta
+                Nueva oferta o fiesta
               </h3>
               <p className="mt-1 text-sm text-[var(--brand-muted)]">
-                Ej.: Semana Santa, Fiestas Patronales, Año Nuevo. Define fechas y
-                el precio de cada tipo de habitación.
+                <strong>Oferta:</strong> descuento por cantidad de noches.{" "}
+                <strong>Fiesta:</strong> días del paquete y costo total por tipo.
+                Todo se publica en la web.
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label>Título</Label>
+                <Label>Título (público)</Label>
                 <Input
                   value={offerTitle}
                   onChange={(event) => setOfferTitle(event.target.value)}
@@ -1658,7 +1671,7 @@ export function AdminPanel({
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <select
-                  className="h-10 w-full rounded-lg border px-3 text-sm"
+                  className={selectClass}
                   value={offerKind}
                   onChange={(event) =>
                     setOfferKind(event.target.value as PriceOfferKind)
@@ -1672,7 +1685,7 @@ export function AdminPanel({
                 </select>
               </div>
               <div className="space-y-2">
-                <Label>Desde</Label>
+                <Label>Vigente desde</Label>
                 <Input
                   type="date"
                   value={offerStart}
@@ -1681,7 +1694,7 @@ export function AdminPanel({
                 />
               </div>
               <div className="space-y-2">
-                <Label>Hasta</Label>
+                <Label>Vigente hasta</Label>
                 <Input
                   type="date"
                   value={offerEnd}
@@ -1694,54 +1707,104 @@ export function AdminPanel({
                 <Textarea
                   value={offerDescription}
                   onChange={(event) => setOfferDescription(event.target.value)}
-                  placeholder="Precios especiales por fiestas. Reserva con anticipación."
+                  placeholder="Detalle para huéspedes: condiciones, anticipación, etc."
                   rows={2}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Prioridad (si se solapan fechas)</Label>
-                <Input
-                  type="number"
-                  value={offerPriority}
-                  onChange={(event) =>
-                    setOfferPriority(Number(event.target.value))
-                  }
-                />
-              </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {snapshot.roomTypes.map((type) => (
-                <div key={type.id} className="space-y-2">
-                  <Label>
-                    {type.name} (S/ noche)
-                  </Label>
+
+            {offerKind === "oferta" ? (
+              <div className="grid gap-4 rounded-xl bg-[var(--brand-mist)]/60 p-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Desde cuántas noches</Label>
                   <Input
                     type="number"
                     min={1}
-                    value={offerPrices[type.id] ?? ""}
+                    value={offerMinNights}
+                    onChange={(event) => setOfferMinNights(event.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Descuento (%)</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={90}
+                    value={offerDiscountPercent}
                     onChange={(event) =>
-                      setOfferPrices((prev) => ({
-                        ...prev,
-                        [type.id]: event.target.value,
-                      }))
+                      setOfferDiscountPercent(event.target.value)
                     }
                     required
                   />
                   <p className="text-xs text-[var(--brand-muted)]">
-                    Habitual: {formatMoney(type.basePrice)}
+                    Sobre la tarifa habitual de cada habitación.
                   </p>
                 </div>
-              ))}
+              </div>
+            ) : (
+              <div className="space-y-4 rounded-xl bg-[var(--brand-mist)]/60 p-4">
+                <div className="max-w-xs space-y-2">
+                  <Label>Noches del paquete</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={offerPackageNights}
+                    onChange={(event) =>
+                      setOfferPackageNights(event.target.value)
+                    }
+                    required
+                  />
+                  <p className="text-xs text-[var(--brand-muted)]">
+                    Días de hospedaje incluidos en la fiesta.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {snapshot.roomTypes.map((type) => (
+                    <div key={type.id} className="space-y-2">
+                      <Label>{type.name} — costo total (S/)</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={offerPrices[type.id] ?? ""}
+                        onChange={(event) =>
+                          setOfferPrices((prev) => ({
+                            ...prev,
+                            [type.id]: event.target.value,
+                          }))
+                        }
+                        required
+                      />
+                      <p className="text-xs text-[var(--brand-muted)]">
+                        Habitual {formatMoney(type.basePrice)}/noche
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Prioridad (si se solapan fechas)</Label>
+              <Input
+                type="number"
+                className="max-w-[140px]"
+                value={offerPriority}
+                onChange={(event) =>
+                  setOfferPriority(Number(event.target.value))
+                }
+              />
             </div>
-            <Button type="submit" className="rounded-full">
-              Guardar oferta
+            <Button type="submit" className="rounded-lg bg-[var(--brand-deep)]">
+              Publicar en la web
             </Button>
           </form>
 
           <div className="space-y-4">
             {(snapshot.priceOffers ?? []).length === 0 && (
-              <p className="rounded-2xl bg-white px-5 py-8 text-center text-sm text-[var(--brand-muted)] ring-1 ring-[var(--brand-line)]">
-                Aún no hay ofertas. Crea una para Semana Santa u otras fiestas.
+              <p className="rounded-2xl border border-[var(--brand-line)] bg-white px-5 py-8 text-center text-sm text-[var(--brand-muted)]">
+                Aún no hay ofertas. Crea una oferta por noches o un paquete de
+                fiesta.
               </p>
             )}
             {(snapshot.priceOffers ?? [])
@@ -1750,13 +1813,13 @@ export function AdminPanel({
               .map((offer) => (
                 <div
                   key={offer.id}
-                  className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
+                  className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-6"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
                         {PRICE_OFFER_KIND_LABELS[offer.kind]}
-                        {!offer.active ? " · pausada" : ""}
+                        {!offer.active ? " · pausada" : " · pública"}
                       </p>
                       <h4 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
                         {offer.title}
@@ -1764,6 +1827,17 @@ export function AdminPanel({
                       <p className="mt-1 text-sm text-[var(--brand-muted)]">
                         {formatDate(offer.startDate)} → {formatDate(offer.endDate)}
                       </p>
+                      {offer.kind === "oferta" && (
+                        <p className="mt-2 text-sm font-medium text-[var(--brand-ink)]">
+                          Desde {offer.minNights} noches · {offer.discountPercent}%
+                          dto.
+                        </p>
+                      )}
+                      {offer.kind === "fiesta" && (
+                        <p className="mt-2 text-sm font-medium text-[var(--brand-ink)]">
+                          Paquete de {offer.packageNights} noches
+                        </p>
+                      )}
                       {offer.description && (
                         <p className="mt-2 text-sm text-[var(--brand-ink)]">
                           {offer.description}
@@ -1774,7 +1848,7 @@ export function AdminPanel({
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-full"
+                        className="rounded-lg"
                         onClick={() =>
                           patchOffer(offer.id, { active: !offer.active }).catch(
                             (err) => setError(err.message),
@@ -1786,7 +1860,7 @@ export function AdminPanel({
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-full"
+                        className="rounded-lg text-rose-700"
                         onClick={() =>
                           removeOffer(offer.id).catch((err) =>
                             setError(err.message),
@@ -1797,24 +1871,48 @@ export function AdminPanel({
                       </Button>
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {snapshot.roomTypes.map((type) => (
-                      <div
-                        key={`${offer.id}-${type.id}`}
-                        className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
-                      >
-                        <p className="font-medium text-[var(--brand-ink)]">
-                          {type.name}
-                        </p>
-                        <p className="text-[var(--brand-muted)]">
-                          {offer.prices[type.id]
-                            ? formatMoney(offer.prices[type.id])
-                            : "Sin precio"}{" "}
-                          / noche
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                  {offer.kind === "fiesta" ? (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {snapshot.roomTypes.map((type) => (
+                        <div
+                          key={`${offer.id}-${type.id}`}
+                          className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
+                        >
+                          <p className="font-medium text-[var(--brand-ink)]">
+                            {type.name}
+                          </p>
+                          <p className="text-[var(--brand-muted)]">
+                            {offer.packagePrices?.[type.id]
+                              ? `${formatMoney(offer.packagePrices[type.id]!)} total`
+                              : "Sin precio"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : offer.kind === "oferta" ? (
+                    <p className="text-sm text-[var(--brand-muted)]">
+                      El público ve el % de descuento aplicado a cada tipo.
+                    </p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {snapshot.roomTypes.map((type) => (
+                        <div
+                          key={`${offer.id}-${type.id}`}
+                          className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
+                        >
+                          <p className="font-medium text-[var(--brand-ink)]">
+                            {type.name}
+                          </p>
+                          <p className="text-[var(--brand-muted)]">
+                            {offer.prices[type.id]
+                              ? formatMoney(offer.prices[type.id])
+                              : "Sin precio"}{" "}
+                            / noche
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
           </div>

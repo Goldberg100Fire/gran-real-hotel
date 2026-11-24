@@ -1,6 +1,10 @@
 import { formatDate, formatMoney } from "./format";
 import { HOTEL } from "./hotel-info";
-import { listPublicOffers, todayInLima } from "./pricing";
+import {
+  describeOfferForPublic,
+  listPublicOffers,
+  todayInLima,
+} from "./pricing";
 import type { PriceOffer, RoomType, Service } from "./types";
 
 export type ChatReply = {
@@ -36,10 +40,26 @@ function priceLines(roomTypes: RoomType[]): string {
 
 function offerSummary(offers: PriceOffer[], roomTypes: RoomType[]): string {
   if (offers.length === 0) {
-    return "Ahora no hay temporadas especiales publicadas; aplica la tarifa habitual.";
+    return "Ahora no hay ofertas ni paquetes de fiesta publicados; aplica la tarifa habitual.";
   }
   return offers
     .map((offer) => {
+      const detail = describeOfferForPublic(offer, roomTypes);
+      if (offer.kind === "fiesta" && offer.packagePrices) {
+        const prices = roomTypes
+          .map((type) => {
+            const total = offer.packagePrices?.[type.id];
+            return total
+              ? `${type.name} ${formatMoney(total)} (${offer.packageNights} noches)`
+              : null;
+          })
+          .filter(Boolean)
+          .join(", ");
+        return `${offer.title} (${formatDate(offer.startDate)} al ${formatDate(offer.endDate)}): ${detail}. ${prices}`;
+      }
+      if (offer.kind === "oferta") {
+        return `${offer.title} (${formatDate(offer.startDate)} al ${formatDate(offer.endDate)}): ${detail}`;
+      }
       const prices = roomTypes
         .map((type) =>
           offer.prices[type.id]
@@ -48,7 +68,7 @@ function offerSummary(offers: PriceOffer[], roomTypes: RoomType[]): string {
         )
         .filter(Boolean)
         .join(", ");
-      return `${offer.title} (${formatDate(offer.startDate)} al ${formatDate(offer.endDate)}): ${prices}`;
+      return `${offer.title} (${formatDate(offer.startDate)} al ${formatDate(offer.endDate)}): ${prices || detail}`;
     })
     .join(" · ");
 }

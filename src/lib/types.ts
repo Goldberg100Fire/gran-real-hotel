@@ -85,23 +85,39 @@ export interface RoomType {
   serviceIds: string[];
 }
 
-/** Temporadas, fiestas u ofertas con precios por tipo de habitación. */
-export type PriceOfferKind = "fiesta" | "temporada_alta" | "oferta" | "otro";
+/**
+ * Ofertas públicas:
+ * - oferta: descuento por cantidad de noches
+ * - fiesta: paquete (días fijos + costo total por tipo)
+ * - temporada_alta / otro: compatibilidad (precio por noche)
+ */
+export type PriceOfferKind = "fiesta" | "oferta" | "temporada_alta" | "otro";
 
 export interface PriceOffer {
   id: string;
   title: string;
   description: string;
   kind: PriceOfferKind;
-  /** YYYY-MM-DD inclusive */
+  /** YYYY-MM-DD inclusive (vigencia / fechas de la fiesta) */
   startDate: string;
   /** YYYY-MM-DD inclusive */
   endDate: string;
   active: boolean;
   /** Si hay solape, gana el de mayor prioridad. */
   priority: number;
-  /** Precio por noche (S/) por id de tipo de habitación. */
+  /**
+   * Precio por noche (S/) por tipo.
+   * Usado en temporada/legacy; en fiesta puede ir vacío.
+   */
   prices: Record<string, number>;
+  /** oferta: noches mínimas para aplicar el descuento */
+  minNights?: number;
+  /** oferta: porcentaje de descuento sobre la tarifa habitual (1–90) */
+  discountPercent?: number;
+  /** fiesta: noches del paquete de hospedaje */
+  packageNights?: number;
+  /** fiesta: costo total del paquete (S/) por tipo de habitación */
+  packagePrices?: Record<string, number>;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,8 +238,8 @@ export const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
 };
 
 export const PRICE_OFFER_KIND_LABELS: Record<PriceOfferKind, string> = {
-  fiesta: "Fiesta / feriado",
+  oferta: "Oferta (descuento por noches)",
+  fiesta: "Fiesta / paquete",
   temporada_alta: "Temporada alta",
-  oferta: "Oferta / promoción",
   otro: "Otro",
 };

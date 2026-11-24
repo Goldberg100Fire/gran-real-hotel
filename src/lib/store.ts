@@ -455,7 +455,11 @@ export async function createPriceOffer(input: {
   endDate: string;
   active?: boolean;
   priority?: number;
-  prices: Record<string, number>;
+  prices?: Record<string, number>;
+  minNights?: number;
+  discountPercent?: number;
+  packageNights?: number;
+  packagePrices?: Record<string, number>;
 }): Promise<PriceOffer> {
   const title = input.title.trim();
   if (!title) throw new Error("El título es obligatorio");
@@ -465,8 +469,34 @@ export async function createPriceOffer(input: {
 
   const store = await readStore();
   const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
-  const prices = sanitizeOfferPrices(input.prices, roomTypeIds);
-  if (Object.keys(prices).length === 0) {
+  const prices = sanitizeOfferPrices(input.prices ?? {}, roomTypeIds);
+  const packagePrices = sanitizeOfferPrices(
+    input.packagePrices ?? {},
+    roomTypeIds,
+  );
+
+  let minNights: number | undefined;
+  let discountPercent: number | undefined;
+  let packageNights: number | undefined;
+
+  if (input.kind === "oferta") {
+    minNights = Math.round(Number(input.minNights) || 0);
+    discountPercent = Math.round(Number(input.discountPercent) || 0);
+    if (minNights < 1) {
+      throw new Error("Indica desde cuántas noches aplica el descuento");
+    }
+    if (discountPercent < 1 || discountPercent > 90) {
+      throw new Error("El descuento debe estar entre 1% y 90%");
+    }
+  } else if (input.kind === "fiesta") {
+    packageNights = Math.round(Number(input.packageNights) || 0);
+    if (packageNights < 1) {
+      throw new Error("Indica cuántas noches incluye el paquete de fiesta");
+    }
+    if (Object.keys(packagePrices).length === 0) {
+      throw new Error("Define el costo total del paquete por tipo de habitación");
+    }
+  } else if (Object.keys(prices).length === 0) {
     throw new Error("Define al menos un precio por tipo de habitación");
   }
 
@@ -481,6 +511,10 @@ export async function createPriceOffer(input: {
     active: input.active ?? true,
     priority: Number.isFinite(input.priority) ? Number(input.priority) : 0,
     prices,
+    ...(minNights != null ? { minNights } : {}),
+    ...(discountPercent != null ? { discountPercent } : {}),
+    ...(packageNights != null ? { packageNights } : {}),
+    ...(Object.keys(packagePrices).length > 0 ? { packagePrices } : {}),
     createdAt: now,
     updatedAt: now,
   };
@@ -503,6 +537,10 @@ export async function updatePriceOffer(
       | "active"
       | "priority"
       | "prices"
+      | "minNights"
+      | "discountPercent"
+      | "packageNights"
+      | "packagePrices"
     >
   >,
 ): Promise<PriceOffer> {
@@ -532,11 +570,20 @@ export async function updatePriceOffer(
   }
   if (patch.prices) {
     const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
-    const prices = sanitizeOfferPrices(patch.prices, roomTypeIds);
-    if (Object.keys(prices).length === 0) {
-      throw new Error("Define al menos un precio por tipo de habitación");
-    }
-    offer.prices = prices;
+    offer.prices = sanitizeOfferPrices(patch.prices, roomTypeIds);
+  }
+  if (typeof patch.minNights === "number") {
+    offer.minNights = Math.round(patch.minNights);
+  }
+  if (typeof patch.discountPercent === "number") {
+    offer.discountPercent = Math.round(patch.discountPercent);
+  }
+  if (typeof patch.packageNights === "number") {
+    offer.packageNights = Math.round(patch.packageNights);
+  }
+  if (patch.packagePrices) {
+    const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
+    offer.packagePrices = sanitizeOfferPrices(patch.packagePrices, roomTypeIds);
   }
 
   offer.updatedAt = new Date().toISOString();
@@ -1245,7 +1292,9 @@ export async function createRoomType(input: {
   }
   const store = await readStore();
   const galleryPaths = store.galleryImages.map((image) => image.path);
-  if (!isAllowedRoomImage(input.imagePath, galleryPaths)) {
+  const imagePath = input.imagePath.trim();
+  // Permite crear el tipo y luego subir su foto propia; si hay path, debe ser válido.
+  if (imagePath && !isAllowedRoomImage(imagePath, galleryPaths)) {
     throw new Error("Selecciona una foto válida");
   }
 
@@ -1266,7 +1315,7 @@ export async function createRoomType(input: {
     maxGuests: Math.round(input.maxGuests),
     bedType: input.bedType.trim() || "1 cama",
     imageGradient: "from-[#3d3129] via-[#6b5344] to-[#a67b5b]",
-    imagePath: input.imagePath,
+    ...(imagePath ? { imagePath } : {}),
     serviceIds,
   };
 

@@ -11,8 +11,8 @@ import type { PriceOfferKind } from "@/lib/types";
 
 const KINDS: PriceOfferKind[] = [
   "fiesta",
-  "temporada_alta",
   "oferta",
+  "temporada_alta",
   "otro",
 ];
 
@@ -20,6 +20,11 @@ function parseKind(value: unknown): PriceOfferKind | null {
   return typeof value === "string" && KINDS.includes(value as PriceOfferKind)
     ? (value as PriceOfferKind)
     : null;
+}
+
+function asPriceMap(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  return value as Record<string, number>;
 }
 
 export async function GET() {
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const kind = parseKind(body.kind) ?? "fiesta";
+    const kind = parseKind(body.kind) ?? "oferta";
     const offer = await createPriceOffer({
       title: String(body.title ?? ""),
       description: String(body.description ?? ""),
@@ -68,10 +73,18 @@ export async function POST(request: Request) {
       endDate: String(body.endDate ?? ""),
       active: body.active !== false,
       priority: Number(body.priority ?? 0),
-      prices:
-        body.prices && typeof body.prices === "object"
-          ? (body.prices as Record<string, number>)
-          : {},
+      prices: asPriceMap(body.prices) ?? {},
+      minNights:
+        body.minNights !== undefined ? Number(body.minNights) : undefined,
+      discountPercent:
+        body.discountPercent !== undefined
+          ? Number(body.discountPercent)
+          : undefined,
+      packageNights:
+        body.packageNights !== undefined
+          ? Number(body.packageNights)
+          : undefined,
+      packagePrices: asPriceMap(body.packagePrices),
     });
     return NextResponse.json({ offer }, { status: 201 });
   } catch (error) {
@@ -122,10 +135,18 @@ export async function PATCH(request: Request) {
       active: typeof body.active === "boolean" ? body.active : undefined,
       priority:
         typeof body.priority === "number" ? body.priority : undefined,
-      prices:
-        body.prices && typeof body.prices === "object"
-          ? (body.prices as Record<string, number>)
+      prices: asPriceMap(body.prices),
+      minNights:
+        body.minNights !== undefined ? Number(body.minNights) : undefined,
+      discountPercent:
+        body.discountPercent !== undefined
+          ? Number(body.discountPercent)
           : undefined,
+      packageNights:
+        body.packageNights !== undefined
+          ? Number(body.packageNights)
+          : undefined,
+      packagePrices: asPriceMap(body.packagePrices),
     });
 
     return NextResponse.json({ offer });

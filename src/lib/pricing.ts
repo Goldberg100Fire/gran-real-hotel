@@ -47,11 +47,65 @@ export function resolveNightlyPrice(
   isoDate: string,
 ): { price: number; offer: PriceOffer | null; basePrice: number } {
   const offer = pickOfferForDate(offers, isoDate);
-  const override = offer?.prices[roomType.id];
+  if (!offer) {
+    return { price: roomType.basePrice, offer: null, basePrice: roomType.basePrice };
+  }
+
+  // Fiesta: el público ve el paquete; la "noche" de referencia es total/noches.
+  if (offer.kind === "fiesta") {
+    const packageTotal = offer.packagePrices?.[roomType.id];
+    const nights = offer.packageNights ?? 0;
+    if (typeof packageTotal === "number" && packageTotal > 0 && nights > 0) {
+      return {
+        price: Math.round(packageTotal / nights),
+        offer,
+        basePrice: roomType.basePrice,
+      };
+    }
+  }
+
+  // Oferta por descuento: muestra precio con descuento (1 noche de referencia).
+  if (offer.kind === "oferta") {
+    const percent = offer.discountPercent ?? 0;
+    if (percent > 0) {
+      const discounted = Math.max(
+        1,
+        Math.round(roomType.basePrice * (1 - percent / 100)),
+      );
+      return { price: discounted, offer, basePrice: roomType.basePrice };
+    }
+  }
+
+  const override = offer.prices[roomType.id];
   if (typeof override === "number" && override > 0) {
     return { price: override, offer, basePrice: roomType.basePrice };
   }
   return { price: roomType.basePrice, offer: null, basePrice: roomType.basePrice };
+}
+
+/** Texto público resumido de una oferta. */
+export function describeOfferForPublic(
+  offer: PriceOffer,
+  roomTypes: RoomType[],
+): string {
+  if (offer.kind === "oferta") {
+    const nights = offer.minNights ?? 1;
+    const percent = offer.discountPercent ?? 0;
+    return `Desde ${nights} noche${nights === 1 ? "" : "s"}: ${percent}% de descuento sobre la tarifa habitual`;
+  }
+  if (offer.kind === "fiesta") {
+    const nights = offer.packageNights ?? 0;
+    const priced = roomTypes
+      .map((type) => {
+        const total = offer.packagePrices?.[type.id];
+        return typeof total === "number" && total > 0
+          ? `${type.name}`
+          : null;
+      })
+      .filter(Boolean);
+    return `Paquete de ${nights} noche${nights === 1 ? "" : "s"} · ${priced.length} tipos con tarifa especial`;
+  }
+  return "Tarifa especial por temporada";
 }
 
 export function listPublicOffers(
