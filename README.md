@@ -2,6 +2,8 @@
 
 Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, contacto y un bot público de consultas. Las reservas se confirman **solo por teléfono**.
 
+**En vivo:** https://gran-real-hotel.vercel.app/
+
 ## Qué incluye
 
 - Página pública con logo, fotos y datos del hotel
