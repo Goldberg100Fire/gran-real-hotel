@@ -249,25 +249,10 @@ export function StaffAuthForm({
           >
             {loading ? "Entrando..." : "Iniciar sesión"}
           </Button>
-          <div className="flex flex-col gap-1.5 border-t border-[var(--brand-line)]/80 pt-3 text-[13px]">
+          <div className="border-t border-[var(--brand-line)]/80 pt-3 text-center text-[13px]">
             <button
               type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
-              onClick={() => {
-                setMode("setup");
-                setSetupStep("email");
-                setCode("");
-                setPassword("");
-                setConfirm("");
-                setInfo(null);
-                setError(null);
-              }}
-            >
-              Primer acceso: crear contraseña
-            </button>
-            <button
-              type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
+              className="text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
               onClick={() => {
                 setMode("jefe-recover");
                 setJefeStep("email");
@@ -275,18 +260,7 @@ export function StaffAuthForm({
                 setError(null);
               }}
             >
-              Olvidé mi contraseña (jefe)
-            </button>
-            <button
-              type="button"
-              className="text-left text-[var(--brand-muted)] underline-offset-4 hover:text-[var(--brand-ink)] hover:underline"
-              onClick={() => {
-                setMode("empleado-request");
-                setInfo(null);
-                setError(null);
-              }}
-            >
-              Empleado: solicitar restablecer
+              Recuperar contraseña
             </button>
           </div>
         </form>
@@ -389,16 +363,15 @@ export function StaffAuthForm({
       {mode === "jefe-recover" && (
         <form onSubmit={onJefeRecover} className="space-y-4">
           <div>
-            <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold">
-              Recuperar (solo jefe)
+            <h2 className="font-[family-name:var(--font-display)] text-xl font-extrabold sm:text-2xl">
+              Recuperar contraseña
             </h2>
             <p className="mt-2 text-sm text-[var(--brand-muted)]">
-              Enviamos un código al correo del jefe. Los empleados no pueden
-              recuperar solos.
+              Te enviamos un código a tu correo para crear una nueva clave.
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="jefe-email">Correo del jefe</Label>
+            <Label htmlFor="jefe-email">Correo</Label>
             <Input
               id="jefe-email"
               type="email"
