@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       number: String(body.number ?? ""),
       floor: Number(body.floor) || 1,
       roomTypeId: String(body.roomTypeId ?? ""),
+      branchId: body.branchId ? String(body.branchId) : undefined,
       status: STATUSES.includes(body.status) ? body.status : "disponible",
       notes: body.notes ? String(body.notes) : "",
     });

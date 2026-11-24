@@ -1,4 +1,4 @@
-import { HOTEL } from "./hotel-info";
+import { createPrimaryBranch, DEFAULT_BRANCH_ID, HOTEL } from "./hotel-info";
 import { seedGalleryImages } from "./hotel-images";
 import type { HotelStore } from "./types";
 
@@ -6,7 +6,9 @@ export const HOTEL_NAME = HOTEL.name;
 export const HOTEL_TAGLINE = HOTEL.tagline;
 
 export function createSeedStore(): HotelStore {
+  const primary = createPrimaryBranch();
   return {
+    branches: [primary],
     services: [
       {
         id: "svc-bano",
@@ -72,6 +74,7 @@ export function createSeedStore(): HotelStore {
     roomTypes: [
       {
         id: "type-simple",
+        branchId: DEFAULT_BRANCH_ID,
         name: "Simple",
         description:
           "Habitación individual cómoda para viajeros. Ideal para una persona.",
@@ -90,6 +93,7 @@ export function createSeedStore(): HotelStore {
       },
       {
         id: "type-matrimonial",
+        branchId: DEFAULT_BRANCH_ID,
         name: "Matrimonial",
         description:
           "Habitación con cama matrimonial, mobiliario de madera y ambiente cálido para descansar en Otuzco.",
@@ -110,6 +114,7 @@ export function createSeedStore(): HotelStore {
       },
       {
         id: "type-doble",
+        branchId: DEFAULT_BRANCH_ID,
         name: "Doble",
         description:
           "Dos camas individuales, ideal para amigos o pareja que prefieren camas separadas.",
@@ -130,6 +135,7 @@ export function createSeedStore(): HotelStore {
       },
       {
         id: "type-familiar",
+        branchId: DEFAULT_BRANCH_ID,
         name: "Familiar",
         description:
           "Más espacio para familia o grupo pequeño. Ideal para quienes viajan juntos.",
@@ -151,6 +157,7 @@ export function createSeedStore(): HotelStore {
       },
       {
         id: "type-suite",
+        branchId: DEFAULT_BRANCH_ID,
         name: "Suite Matrimonial",
         description:
           "La opción más cómoda: ambiente premium, buena luz y mayor confort para la pareja.",
@@ -173,22 +180,22 @@ export function createSeedStore(): HotelStore {
       },
     ],
     rooms: [
-      { id: "room-101", number: "101", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
-      { id: "room-102", number: "102", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
-      { id: "room-103", number: "103", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
-      { id: "room-104", number: "104", floor: 1, roomTypeId: "type-simple", status: "limpieza", notes: "" },
-      { id: "room-201", number: "201", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
-      { id: "room-202", number: "202", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
-      { id: "room-203", number: "203", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
-      { id: "room-204", number: "204", floor: 2, roomTypeId: "type-matrimonial", status: "ocupada", notes: "" },
-      { id: "room-301", number: "301", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
-      { id: "room-302", number: "302", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
-      { id: "room-303", number: "303", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
-      { id: "room-304", number: "304", floor: 3, roomTypeId: "type-doble", status: "mantenimiento", notes: "" },
-      { id: "room-401", number: "401", floor: 4, roomTypeId: "type-familiar", status: "disponible", notes: "" },
-      { id: "room-402", number: "402", floor: 4, roomTypeId: "type-familiar", status: "disponible", notes: "" },
-      { id: "room-501", number: "501", floor: 5, roomTypeId: "type-suite", status: "disponible", notes: "" },
-      { id: "room-502", number: "502", floor: 5, roomTypeId: "type-suite", status: "disponible", notes: "" },
+      { id: "room-101", branchId: DEFAULT_BRANCH_ID, number: "101", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
+      { id: "room-102", branchId: DEFAULT_BRANCH_ID, number: "102", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
+      { id: "room-103", branchId: DEFAULT_BRANCH_ID, number: "103", floor: 1, roomTypeId: "type-simple", status: "disponible", notes: "" },
+      { id: "room-104", branchId: DEFAULT_BRANCH_ID, number: "104", floor: 1, roomTypeId: "type-simple", status: "limpieza", notes: "" },
+      { id: "room-201", branchId: DEFAULT_BRANCH_ID, number: "201", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
+      { id: "room-202", branchId: DEFAULT_BRANCH_ID, number: "202", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
+      { id: "room-203", branchId: DEFAULT_BRANCH_ID, number: "203", floor: 2, roomTypeId: "type-matrimonial", status: "disponible", notes: "" },
+      { id: "room-204", branchId: DEFAULT_BRANCH_ID, number: "204", floor: 2, roomTypeId: "type-matrimonial", status: "ocupada", notes: "" },
+      { id: "room-301", branchId: DEFAULT_BRANCH_ID, number: "301", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
+      { id: "room-302", branchId: DEFAULT_BRANCH_ID, number: "302", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
+      { id: "room-303", branchId: DEFAULT_BRANCH_ID, number: "303", floor: 3, roomTypeId: "type-doble", status: "disponible", notes: "" },
+      { id: "room-304", branchId: DEFAULT_BRANCH_ID, number: "304", floor: 3, roomTypeId: "type-doble", status: "mantenimiento", notes: "" },
+      { id: "room-401", branchId: DEFAULT_BRANCH_ID, number: "401", floor: 4, roomTypeId: "type-familiar", status: "disponible", notes: "" },
+      { id: "room-402", branchId: DEFAULT_BRANCH_ID, number: "402", floor: 4, roomTypeId: "type-familiar", status: "disponible", notes: "" },
+      { id: "room-501", branchId: DEFAULT_BRANCH_ID, number: "501", floor: 5, roomTypeId: "type-suite", status: "disponible", notes: "" },
+      { id: "room-502", branchId: DEFAULT_BRANCH_ID, number: "502", floor: 5, roomTypeId: "type-suite", status: "disponible", notes: "" },
     ],
     reservations: [],
     mailOutbox: [],

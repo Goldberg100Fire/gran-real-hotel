@@ -71,6 +71,7 @@ export async function POST(request: Request) {
       kind,
       startDate: String(body.startDate ?? ""),
       endDate: String(body.endDate ?? ""),
+      branchId: body.branchId ? String(body.branchId) : undefined,
       active: body.active !== false,
       priority: Number(body.priority ?? 0),
       prices: asPriceMap(body.prices) ?? {},

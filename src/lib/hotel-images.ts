@@ -78,6 +78,7 @@ export function isAllowedRoomImage(
 export function seedGalleryImages(): {
   id: string;
   label: string;
+  branchId: string;
   path: string;
   roomTypeId: string;
   createdAt: string;
@@ -86,6 +87,7 @@ export function seedGalleryImages(): {
   return HOTEL_ROOM_IMAGES.map((image, index) => ({
     id: `gallery-seed-${index + 1}`,
     label: image.label,
+    branchId: "branch-otuzco",
     path: image.path,
     roomTypeId: image.roomTypeId,
     createdAt,

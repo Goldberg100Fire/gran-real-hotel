@@ -4,7 +4,12 @@ import { randomBytes } from "crypto";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import type { WriteBatch } from "firebase-admin/firestore";
 import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
-import { HOTEL } from "./hotel-info";
+import {
+  createPrimaryBranch,
+  DEFAULT_BRANCH_ID,
+  HOTEL,
+  slugifyBranchName,
+} from "./hotel-info";
 import { createSeedStore } from "./seed";
 import { validateGuestDocument } from "./document";
 import {
@@ -19,6 +24,7 @@ import type {
   GalleryImage,
   GalleryImagePublic,
   GuestProfile,
+  HotelBranch,
   HotelStore,
   LoginCode,
   MailMessage,
@@ -78,7 +84,27 @@ type GlobalStore = {
 
 const globalForStore = globalThis as typeof globalThis & GlobalStore;
 
+function ensureBranches(store: HotelStore): HotelBranch[] {
+  if (!store.branches || store.branches.length === 0) {
+    return [createPrimaryBranch()];
+  }
+  return store.branches;
+}
+
+function primaryBranchId(branches: HotelBranch[]): string {
+  return (
+    branches.find((branch) => branch.isPrimary)?.id ??
+    branches.find((branch) => branch.active)?.id ??
+    branches[0]?.id ??
+    DEFAULT_BRANCH_ID
+  );
+}
+
 function ensureCatalog(store: HotelStore): HotelStore {
+  store.branches = ensureBranches(store);
+  const defaultBranchId = primaryBranchId(store.branches);
+  const branchIds = new Set(store.branches.map((branch) => branch.id));
+
   const seed = createSeedStore();
   const serviceIds = new Set(store.services.map((item) => item.id));
   for (const service of seed.services) {
@@ -108,11 +134,24 @@ function ensureCatalog(store: HotelStore): HotelStore {
     }
   }
 
+  for (const roomType of store.roomTypes) {
+    if (!roomType.branchId || !branchIds.has(roomType.branchId)) {
+      roomType.branchId = defaultBranchId;
+    }
+  }
+
   const roomNumbers = new Set(store.rooms.map((item) => item.number));
   for (const room of seed.rooms) {
     if (!roomNumbers.has(room.number) && typeIds.has(room.roomTypeId)) {
       store.rooms.push(room);
       roomNumbers.add(room.number);
+    }
+  }
+
+  for (const room of store.rooms) {
+    if (!room.branchId || !branchIds.has(room.branchId)) {
+      const type = store.roomTypes.find((item) => item.id === room.roomTypeId);
+      room.branchId = type?.branchId ?? defaultBranchId;
     }
   }
 
@@ -126,6 +165,21 @@ function ensureCatalog(store: HotelStore): HotelStore {
       if (image.roomTypeId) continue;
       const inferred = inferRoomTypeIdFromPath(image.path);
       if (inferred) image.roomTypeId = inferred;
+    }
+  }
+
+  for (const image of store.galleryImages) {
+    if (!image.branchId || !branchIds.has(image.branchId)) {
+      const type = image.roomTypeId
+        ? store.roomTypes.find((item) => item.id === image.roomTypeId)
+        : null;
+      image.branchId = type?.branchId ?? defaultBranchId;
+    }
+  }
+
+  for (const offer of store.priceOffers ?? []) {
+    if (!offer.branchId || !branchIds.has(offer.branchId)) {
+      offer.branchId = defaultBranchId;
     }
   }
 
@@ -149,6 +203,7 @@ function ensureCatalog(store: HotelStore): HotelStore {
 function normalizeStore(store: HotelStore): HotelStore {
   return ensureCatalog({
     ...store,
+    branches: store.branches ?? [],
     reservations: store.reservations ?? [],
     mailOutbox: store.mailOutbox ?? [],
     loginCodes: store.loginCodes ?? [],
@@ -191,6 +246,7 @@ async function persistFileStore(store: HotelStore): Promise<void> {
 async function readFirestoreStore(): Promise<HotelStore> {
   const db = getDb();
   const [
+    branchesSnap,
     servicesSnap,
     roomTypesSnap,
     roomsSnap,
@@ -202,6 +258,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     offersSnap,
     gallerySnap,
   ] = await Promise.all([
+    db.collection(COLLECTIONS.branches).get(),
     db.collection(COLLECTIONS.services).get(),
     db.collection(COLLECTIONS.roomTypes).get(),
     db.collection(COLLECTIONS.rooms).get(),
@@ -221,6 +278,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
   }
 
   return cloneStore({
+    branches: branchesSnap.docs.map((doc) => doc.data() as HotelBranch),
     services: servicesSnap.docs.map((doc) => doc.data() as Service),
     roomTypes: roomTypesSnap.docs.map((doc) => doc.data() as RoomType),
     rooms: roomsSnap.docs.map((doc) => doc.data() as Room),
@@ -243,6 +301,9 @@ export async function seedFirestore(store: HotelStore = createSeedStore()): Prom
     updatedAt: new Date().toISOString(),
   });
 
+  for (const branch of store.branches) {
+    batch.set(db.collection(COLLECTIONS.branches).doc(branch.id), branch);
+  }
   for (const service of store.services) {
     batch.set(db.collection(COLLECTIONS.services).doc(service.id), service);
   }
@@ -285,6 +346,11 @@ async function writeFirestoreStore(store: HotelStore): Promise<void> {
     }),
   );
 
+  for (const branch of store.branches) {
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.branches).doc(branch.id), branch),
+    );
+  }
   for (const service of store.services) {
     ops.push((batch) =>
       batch.set(db.collection(COLLECTIONS.services).doc(service.id), service),
@@ -416,13 +482,60 @@ export function getStorageMode(): "firestore" | "local" | "memory" {
   return "local";
 }
 
-export async function getCatalog() {
+export async function listBranches(activeOnly = false): Promise<HotelBranch[]> {
   const store = await readStore();
+  const branches = [...store.branches].sort((a, b) => {
+    if (a.isPrimary && !b.isPrimary) return -1;
+    if (!a.isPrimary && b.isPrimary) return 1;
+    return a.city.localeCompare(b.city, "es");
+  });
+  return activeOnly ? branches.filter((branch) => branch.active) : branches;
+}
+
+export async function getBranchBySlug(
+  slug: string,
+): Promise<HotelBranch | null> {
+  const store = await readStore();
+  const normalized = slug.trim().toLowerCase();
+  return (
+    store.branches.find(
+      (branch) => branch.slug === normalized && branch.active,
+    ) ?? null
+  );
+}
+
+export async function getBranchById(
+  id: string,
+): Promise<HotelBranch | null> {
+  const store = await readStore();
+  return store.branches.find((branch) => branch.id === id) ?? null;
+}
+
+function filterByBranch<T extends { branchId: string }>(
+  items: T[],
+  branchId?: string | null,
+): T[] {
+  if (!branchId) return items;
+  return items.filter((item) => item.branchId === branchId);
+}
+
+export async function getCatalog(branchId?: string | null) {
+  const store = await readStore();
+  const resolvedBranchId =
+    branchId ||
+    primaryBranchId(store.branches);
   return {
+    branch:
+      store.branches.find((branch) => branch.id === resolvedBranchId) ??
+      store.branches[0] ??
+      null,
+    branches: store.branches.filter((branch) => branch.active),
     services: store.services,
-    roomTypes: store.roomTypes.map(roomTypeWithoutBlob),
-    rooms: store.rooms,
-    priceOffers: store.priceOffers,
+    roomTypes: filterByBranch(store.roomTypes, resolvedBranchId).map(
+      roomTypeWithoutBlob,
+    ),
+    rooms: filterByBranch(store.rooms, resolvedBranchId),
+    priceOffers: filterByBranch(store.priceOffers, resolvedBranchId),
   };
 }
 
@@ -453,6 +566,7 @@ export async function createPriceOffer(input: {
   kind: PriceOfferKind;
   startDate: string;
   endDate: string;
+  branchId?: string;
   active?: boolean;
   priority?: number;
   prices?: Record<string, number>;
@@ -468,7 +582,16 @@ export async function createPriceOffer(input: {
   if (dateError) throw new Error(dateError);
 
   const store = await readStore();
-  const roomTypeIds = new Set(store.roomTypes.map((type) => type.id));
+  const branchId =
+    input.branchId?.trim() || primaryBranchId(store.branches);
+  if (!store.branches.some((branch) => branch.id === branchId)) {
+    throw new Error("Sucursal no encontrada");
+  }
+  const roomTypeIds = new Set(
+    store.roomTypes
+      .filter((type) => type.branchId === branchId)
+      .map((type) => type.id),
+  );
   const prices = sanitizeOfferPrices(input.prices ?? {}, roomTypeIds);
   const packagePrices = sanitizeOfferPrices(
     input.packagePrices ?? {},
@@ -503,6 +626,7 @@ export async function createPriceOffer(input: {
   const now = new Date().toISOString();
   const offer: PriceOffer = {
     id: `offer-${crypto.randomUUID()}`,
+    branchId,
     title,
     description: input.description.trim(),
     kind: input.kind,
@@ -599,10 +723,16 @@ export async function deletePriceOffer(id: string): Promise<void> {
   await writeStore(store);
 }
 
-export async function getAvailability(checkIn?: string, checkOut?: string) {
+export async function getAvailability(
+  checkIn?: string,
+  checkOut?: string,
+  branchId?: string | null,
+) {
   const store = await readStore();
+  const resolvedBranchId = branchId || primaryBranchId(store.branches);
+  const roomTypes = filterByBranch(store.roomTypes, resolvedBranchId);
 
-  return store.roomTypes.map((type) => {
+  return roomTypes.map((type) => {
     const typeRooms = store.rooms.filter((room) => room.roomTypeId === type.id);
     const physicalAvailable = typeRooms.filter((room) =>
       isRoomBookable(room.status),
@@ -1186,6 +1316,7 @@ export async function addGalleryImage(input: {
   label: string;
   blob: RoomTypeImageBlob;
   roomTypeId?: string | null;
+  branchId?: string | null;
 }): Promise<GalleryImagePublic> {
   const label = input.label.trim() || "Foto habitación";
   try {
@@ -1197,14 +1328,25 @@ export async function addGalleryImage(input: {
 
   const store = await readStore();
   const roomTypeId = input.roomTypeId ? String(input.roomTypeId) : null;
-  if (roomTypeId && !store.roomTypes.some((type) => type.id === roomTypeId)) {
+  const roomType = roomTypeId
+    ? store.roomTypes.find((type) => type.id === roomTypeId)
+    : null;
+  if (roomTypeId && !roomType) {
     throw new Error("Tipo de habitación no encontrado");
+  }
+  const branchId =
+    input.branchId?.trim() ||
+    roomType?.branchId ||
+    primaryBranchId(store.branches);
+  if (!store.branches.some((branch) => branch.id === branchId)) {
+    throw new Error("Sucursal no encontrada");
   }
 
   const id = `gallery-${crypto.randomUUID()}`;
   const image: GalleryImage = {
     id,
     label,
+    branchId,
     path: galleryMediaPath(id),
     roomTypeId,
     imageBlob: input.blob,
@@ -1281,6 +1423,7 @@ export async function createRoomType(input: {
   bedType: string;
   imagePath: string;
   serviceIds: string[];
+  branchId?: string;
 }): Promise<RoomType> {
   const name = input.name.trim();
   if (!name) throw new Error("El nombre es obligatorio");
@@ -1291,6 +1434,11 @@ export async function createRoomType(input: {
     throw new Error("Capacidad inválida");
   }
   const store = await readStore();
+  const branchId =
+    input.branchId?.trim() || primaryBranchId(store.branches);
+  if (!store.branches.some((branch) => branch.id === branchId)) {
+    throw new Error("Sucursal no encontrada");
+  }
   const galleryPaths = store.galleryImages.map((image) => image.path);
   const imagePath = input.imagePath.trim();
   // Permite crear el tipo y luego subir su foto propia; si hay path, debe ser válido.
@@ -1309,6 +1457,7 @@ export async function createRoomType(input: {
 
   const roomType: RoomType = {
     id: `type-${crypto.randomUUID()}`,
+    branchId,
     name,
     description: input.description.trim(),
     basePrice: Math.round(input.basePrice),
@@ -1390,6 +1539,7 @@ export async function createRoom(input: {
   roomTypeId: string;
   status?: RoomStatus;
   notes?: string;
+  branchId?: string;
 }): Promise<Room> {
   const store = await readStore();
   const number = input.number.trim();
@@ -1398,18 +1548,26 @@ export async function createRoom(input: {
   if (!Number.isFinite(floor) || floor < 1) {
     throw new Error("El piso debe ser 1 o mayor");
   }
-  const typeExists = store.roomTypes.some((type) => type.id === input.roomTypeId);
-  if (!typeExists) throw new Error("Tipo de habitación inválido");
+  const roomType = store.roomTypes.find((type) => type.id === input.roomTypeId);
+  if (!roomType) throw new Error("Tipo de habitación inválido");
+  const branchId =
+    input.branchId?.trim() || roomType.branchId || primaryBranchId(store.branches);
+  if (roomType.branchId !== branchId) {
+    throw new Error("El tipo no pertenece a esa sucursal");
+  }
   if (
     store.rooms.some(
-      (room) => room.number.toLowerCase() === number.toLowerCase(),
+      (room) =>
+        room.branchId === branchId &&
+        room.number.toLowerCase() === number.toLowerCase(),
     )
   ) {
-    throw new Error("Ya existe una habitación con ese número");
+    throw new Error("Ya existe una habitación con ese número en esta sede");
   }
 
   const room: Room = {
     id: `room-${crypto.randomUUID()}`,
+    branchId,
     number,
     floor,
     roomTypeId: input.roomTypeId,
@@ -1742,12 +1900,168 @@ export function isStaffResetAuthorized(member: StaffMember): boolean {
   return Number.isFinite(until) && until > Date.now();
 }
 
+export async function createBranch(input: {
+  name: string;
+  city: string;
+  region?: string;
+  country?: string;
+  address: string;
+  phoneMobile: string;
+  phoneLandline?: string;
+  tagline?: string;
+  heroImagePath?: string;
+  coverImagePath?: string;
+  slug?: string;
+}): Promise<HotelBranch> {
+  const city = input.city.trim();
+  const address = input.address.trim();
+  const phoneMobile = input.phoneMobile.trim();
+  if (!city) throw new Error("La ciudad es obligatoria");
+  if (!address) throw new Error("La dirección es obligatoria");
+  if (!phoneMobile) throw new Error("El celular de la sede es obligatorio");
+
+  const store = await readStore();
+  let slug = slugifyBranchName(input.slug?.trim() || city);
+  const baseSlug = slug;
+  let n = 2;
+  while (store.branches.some((branch) => branch.slug === slug)) {
+    slug = `${baseSlug}-${n}`;
+    n += 1;
+  }
+
+  const now = new Date().toISOString();
+  const name =
+    input.name.trim() || `${HOTEL.name} ${city}`;
+  const fullAddress = `${address} · ${city}${
+    input.region?.trim() ? ` · ${input.region.trim()}` : ""
+  }`;
+
+  const branch: HotelBranch = {
+    id: `branch-${crypto.randomUUID()}`,
+    slug,
+    name,
+    tagline: input.tagline?.trim() || `${city} te espera`,
+    city,
+    region: input.region?.trim() || "",
+    country: input.country?.trim() || HOTEL.country,
+    address,
+    fullAddress,
+    phoneMobile,
+    phoneLandline: input.phoneLandline?.trim() || "",
+    heroImagePath: input.heroImagePath?.trim() || "/hotel/matrimonial-1.png",
+    coverImagePath: input.coverImagePath?.trim() || undefined,
+    active: true,
+    isPrimary: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  store.branches.push(branch);
+  await writeStore(store);
+  return branch;
+}
+
+export async function updateBranch(
+  id: string,
+  patch: Partial<
+    Pick<
+      HotelBranch,
+      | "name"
+      | "tagline"
+      | "city"
+      | "region"
+      | "country"
+      | "address"
+      | "phoneMobile"
+      | "phoneLandline"
+      | "heroImagePath"
+      | "coverImagePath"
+      | "active"
+      | "slug"
+    >
+  >,
+): Promise<HotelBranch> {
+  const store = await readStore();
+  const branch = store.branches.find((item) => item.id === id);
+  if (!branch) throw new Error("Sucursal no encontrada");
+
+  if (typeof patch.name === "string" && patch.name.trim()) {
+    branch.name = patch.name.trim();
+  }
+  if (typeof patch.tagline === "string") {
+    branch.tagline = patch.tagline.trim();
+  }
+  if (typeof patch.city === "string" && patch.city.trim()) {
+    branch.city = patch.city.trim();
+  }
+  if (typeof patch.region === "string") {
+    branch.region = patch.region.trim();
+  }
+  if (typeof patch.country === "string") {
+    branch.country = patch.country.trim();
+  }
+  if (typeof patch.address === "string" && patch.address.trim()) {
+    branch.address = patch.address.trim();
+  }
+  if (typeof patch.phoneMobile === "string" && patch.phoneMobile.trim()) {
+    branch.phoneMobile = patch.phoneMobile.trim();
+  }
+  if (typeof patch.phoneLandline === "string") {
+    branch.phoneLandline = patch.phoneLandline.trim();
+  }
+  if (typeof patch.heroImagePath === "string" && patch.heroImagePath.trim()) {
+    branch.heroImagePath = patch.heroImagePath.trim();
+  }
+  if (typeof patch.coverImagePath === "string") {
+    branch.coverImagePath = patch.coverImagePath.trim() || undefined;
+  }
+  if (typeof patch.active === "boolean") {
+    if (branch.isPrimary && !patch.active) {
+      throw new Error("No se puede desactivar la sede principal");
+    }
+    branch.active = patch.active;
+  }
+  if (typeof patch.slug === "string" && patch.slug.trim()) {
+    const slug = slugifyBranchName(patch.slug);
+    if (
+      store.branches.some(
+        (item) => item.id !== id && item.slug === slug,
+      )
+    ) {
+      throw new Error("Ese enlace de sede ya está en uso");
+    }
+    branch.slug = slug;
+  }
+
+  branch.fullAddress = `${branch.address} · ${branch.city}${
+    branch.region ? ` · ${branch.region}` : ""
+  }`;
+  branch.updatedAt = new Date().toISOString();
+  await writeStore(store);
+  return branch;
+}
+
+export async function setBranchHeroFromUpload(
+  branchId: string,
+  blob: RoomTypeImageBlob,
+  label = "Fachada de la sede",
+): Promise<HotelBranch> {
+  const image = await addGalleryImage({
+    label,
+    blob,
+    branchId,
+    roomTypeId: null,
+  });
+  return updateBranch(branchId, { heroImagePath: image.path });
+}
+
 export async function getAdminSnapshot() {
   await ensureOwnerStaffRecords();
   const store = await readStore();
   const availability = await getAvailability();
 
   return {
+    branches: store.branches,
     rooms: store.rooms,
     roomTypes: store.roomTypes.map(roomTypeWithoutBlob),
     galleryImages: store.galleryImages.map(galleryWithoutBlob),
@@ -1772,6 +2086,7 @@ export async function getAdminSnapshot() {
       guestsRegistered: store.guests.length,
       staffActive: store.staffMembers.filter((member) => member.active).length,
       activeOffers: store.priceOffers.filter((offer) => offer.active).length,
+      branches: store.branches.filter((branch) => branch.active).length,
     },
   };
 }

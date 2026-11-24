@@ -13,6 +13,7 @@ Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, co
 - Panel interno en `/personal` con **correo y contraseña** (sin registro público)
 - El **jefe** autoriza correos de empleados; cada uno crea su contraseña; solo el jefe recupera solo; empleados necesitan su OK
 - El **jefe** crea/edita tipos, **sube fotos** por habitación, servicios y ofertas/fiestas
+- **Sucursales:** cada sede tiene su dirección, teléfonos, foto del hotel, habitaciones y ofertas (`/sede/[ciudad]`)
 
 ## Cómo reservar
 

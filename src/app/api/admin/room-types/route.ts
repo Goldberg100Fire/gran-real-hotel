@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       maxGuests: Number(body.maxGuests) || 1,
       bedType: String(body.bedType ?? ""),
       imagePath: String(body.imagePath ?? ""),
+      branchId: body.branchId ? String(body.branchId) : undefined,
       serviceIds: Array.isArray(body.serviceIds)
         ? body.serviceIds.map(String)
         : [],

@@ -5,7 +5,7 @@ import {
   listPublicOffers,
   todayInLima,
 } from "./pricing";
-import type { PriceOffer, RoomType, Service } from "./types";
+import type { HotelBranch, PriceOffer, RoomType, Service } from "./types";
 
 export type ChatReply = {
   reply: string;
@@ -16,6 +16,7 @@ export type ChatContext = {
   roomTypes: RoomType[];
   priceOffers: PriceOffer[];
   services?: Service[];
+  branch?: HotelBranch | null;
 };
 
 function normalize(text: string): string {
@@ -83,6 +84,11 @@ export function answerHotelQuestion(
   const message = normalize(rawMessage);
   const roomTypes = context?.roomTypes ?? [];
   const priceOffers = context?.priceOffers ?? [];
+  const branch = context?.branch;
+  const city = branch?.city ?? HOTEL.city;
+  const phoneMobile = branch?.phoneMobile ?? HOTEL.phoneMobile;
+  const phoneLandline = branch?.phoneLandline || HOTEL.phoneLandline;
+  const fullAddress = branch?.fullAddress ?? HOTEL.fullAddress;
   const { current, upcoming } = listPublicOffers(priceOffers, todayInLima());
 
   if (!message) {
@@ -94,7 +100,7 @@ export function answerHotelQuestion(
 
   if (includesAny(message, ["hola", "buenas", "buen dia", "buenos dias", "hey"])) {
     return {
-      reply: `¡Hola! Bienvenido a ${HOTEL.name} en ${HOTEL.city}. ¿En qué te ayudo?`,
+      reply: `¡Hola! Bienvenido a ${HOTEL.name} en ${city}. ¿En qué te ayudo?`,
       suggestions: ["Reservar", "Habitaciones", "Precios", "Ofertas"],
     };
   }
@@ -112,7 +118,7 @@ export function answerHotelQuestion(
     ])
   ) {
     return {
-      reply: `Las reservas se hacen solo por teléfono. Llama al celular ${HOTEL.phoneMobile} o al fijo ${HOTEL.phoneLandline}. Te confirmamos disponibilidad y tarifa según las fechas.`,
+      reply: `Las reservas se hacen solo por teléfono. Llama al celular ${phoneMobile}${phoneLandline ? ` o al fijo ${phoneLandline}` : ""}. Te confirmamos disponibilidad y tarifa según las fechas.`,
       suggestions: ["Precios", "Ofertas", "Habitaciones"],
     };
   }
@@ -195,7 +201,7 @@ export function answerHotelQuestion(
     ])
   ) {
     return {
-      reply: `Estamos en ${HOTEL.fullAddress}, ${HOTEL.country}.`,
+      reply: `Estamos en ${fullAddress}, ${branch?.country ?? HOTEL.country}.`,
       suggestions: ["Reservar", "Precios", "Habitaciones"],
     };
   }
@@ -242,12 +248,12 @@ export function answerHotelQuestion(
 
   if (includesAny(message, ["gracias", "chao", "adios", "hasta luego"])) {
     return {
-      reply: `¡Con gusto! Si quieres reservar, llama al ${HOTEL.phoneMobile}. Que tengas un buen día.`,
+      reply: `¡Con gusto! Si quieres reservar, llama al ${phoneMobile}. Que tengas un buen día.`,
     };
   }
 
   return {
-    reply: `Puedo ayudarte con habitaciones, precios, fiestas y reservas por teléfono (${HOTEL.phoneMobile}). ¿Qué te gustaría saber?`,
+    reply: `Puedo ayudarte con habitaciones, precios, fiestas y reservas por teléfono (${phoneMobile}). ¿Qué te gustaría saber?`,
     suggestions: ["¿Cómo reservo?", "Precios", "Ofertas", "Habitaciones"],
   };
 }

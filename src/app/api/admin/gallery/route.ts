@@ -90,7 +90,11 @@ export async function POST(request: Request) {
       updatedAt: new Date().toISOString(),
     };
 
-    const image = await addGalleryImage({ label, blob, roomTypeId });
+    const branchId =
+      typeof body.branchId === "string" && body.branchId.trim()
+        ? body.branchId.trim()
+        : null;
+    const image = await addGalleryImage({ label, blob, roomTypeId, branchId });
     return NextResponse.json({ image }, { status: 201 });
   } catch (error) {
     const message =

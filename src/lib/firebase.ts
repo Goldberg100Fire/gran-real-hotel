@@ -64,6 +64,7 @@ export function getDb(): Firestore {
 /** Colecciones del hotel Gran Real */
 export const COLLECTIONS = {
   hotel: "hotel",
+  branches: "branches",
   services: "services",
   roomTypes: "roomTypes",
   rooms: "rooms",

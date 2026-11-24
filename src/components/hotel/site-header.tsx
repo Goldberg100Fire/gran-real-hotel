@@ -2,10 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { getSessionUser, isStaffRole } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
+import { listBranches } from "@/lib/store";
 
 export async function SiteHeader() {
   const user = await getSessionUser();
   const staff = user && isStaffRole(user.role);
+  const branches = await listBranches(true);
+  const primary = branches.find((branch) => branch.isPrimary) ?? branches[0];
 
   return (
     <header className="absolute inset-x-0 top-0 z-20">
@@ -22,11 +25,19 @@ export async function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-2 text-sm font-semibold text-white/95 sm:gap-4 md:gap-5">
           <Link
-            href="/habitaciones"
+            href={primary ? `/sede/${primary.slug}` : "/habitaciones"}
             className="hidden transition hover:text-white sm:inline"
           >
             Habitaciones
           </Link>
+          {branches.length > 1 && (
+            <Link
+              href="/#sedes"
+              className="hidden transition hover:text-white md:inline"
+            >
+              Sedes
+            </Link>
+          )}
           <Link
             href="/#contacto"
             className="hidden transition hover:text-white md:inline"

@@ -54,6 +54,31 @@ export interface GuestProfile {
   updatedAt: string;
 }
 
+/** Una sede del hotel: dirección, teléfonos y fotos propias. */
+export interface HotelBranch {
+  id: string;
+  /** URL pública: /sede/[slug] */
+  slug: string;
+  name: string;
+  tagline: string;
+  city: string;
+  region: string;
+  country: string;
+  address: string;
+  fullAddress: string;
+  phoneMobile: string;
+  phoneLandline: string;
+  /** Foto principal / fachada de esta sede */
+  heroImagePath: string;
+  /** Foto secundaria (contacto, bloques) */
+  coverImagePath?: string;
+  active: boolean;
+  /** La sede original (Otuzco) */
+  isPrimary?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Service {
   id: string;
   name: string;
@@ -70,6 +95,8 @@ export interface RoomTypeImageBlob {
 
 export interface RoomType {
   id: string;
+  /** Sucursal a la que pertenece este tipo */
+  branchId: string;
   name: string;
   description: string;
   basePrice: number;
@@ -95,6 +122,8 @@ export type PriceOfferKind = "fiesta" | "oferta" | "temporada_alta" | "otro";
 
 export interface PriceOffer {
   id: string;
+  /** Sucursal donde aplica la oferta */
+  branchId: string;
   title: string;
   description: string;
   kind: PriceOfferKind;
@@ -124,6 +153,7 @@ export interface PriceOffer {
 
 export interface Room {
   id: string;
+  branchId: string;
   number: string;
   floor: number;
   roomTypeId: string;
@@ -175,10 +205,12 @@ export interface LoginCode {
   createdAt: string;
 }
 
-/** Foto del catálogo, normalmente ligada a un tipo de habitación. */
+/** Foto del catálogo: de una sede y, opcionalmente, de un tipo de habitación. */
 export interface GalleryImage {
   id: string;
   label: string;
+  /** Sucursal dueña de la foto (fachada o habitaciones de esa sede). */
+  branchId: string;
   /** /hotel/... o /api/media/gallery/{id} */
   path: string;
   /** Si está definido, solo se usa en ese tipo (ej. type-doble). */
@@ -191,6 +223,7 @@ export interface GalleryImage {
 export type GalleryImagePublic = Omit<GalleryImage, "imageBlob">;
 
 export interface HotelStore {
+  branches: HotelBranch[];
   services: Service[];
   roomTypes: RoomType[];
   rooms: Room[];

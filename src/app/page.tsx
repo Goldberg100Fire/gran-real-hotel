@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
+import { BranchCards } from "@/components/hotel/branch-cards";
 import { OffersSection } from "@/components/hotel/offers-section";
 import { PhoneCta } from "@/components/hotel/phone-cta";
 import { RoomTypeCard } from "@/components/hotel/room-type-card";
@@ -12,14 +13,16 @@ import {
   resolveNightlyPrice,
   todayInLima,
 } from "@/lib/pricing";
-import { getAvailability, getCatalog } from "@/lib/store";
+import { getAvailability, getCatalog, listBranches } from "@/lib/store";
 
 export default async function HomePage() {
   await connection();
-  const [availability, catalog] = await Promise.all([
+  const [availability, catalog, branches] = await Promise.all([
     getAvailability(),
     getCatalog(),
+    listBranches(true),
   ]);
+  const primary = catalog.branch;
   const today = todayInLima();
   const { current, upcoming } = listPublicOffers(catalog.priceOffers, today);
   const priced = availability.map((item) => {
@@ -60,15 +63,19 @@ export default async function HomePage() {
             className="animate-reveal h-auto w-[min(90vw,400px)] drop-shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
           />
           <p className="animate-reveal-delay mt-6 max-w-md text-lg leading-relaxed text-white/90 md:text-xl">
-            {HOTEL.tagline}. Hotel 3 estrellas en el corazón de Otuzco.
+            {primary?.tagline ?? HOTEL.tagline}. Hotel 3 estrellas
+            {primary ? ` en ${primary.city}` : " en Otuzco"}.
           </p>
           <div className="animate-reveal-delay-2 mt-8 flex flex-wrap gap-3">
-            <PhoneCta label="Llamar para reservar" />
+            <PhoneCta
+              label="Llamar para reservar"
+              phone={primary?.phoneMobile ?? HOTEL.phoneMobile}
+            />
             <Link
-              href="/habitaciones"
+              href={primary ? `/sede/${primary.slug}` : "/habitaciones"}
               className="rounded-full border border-white/45 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
             >
-              Ver habitaciones
+              Ver sede
             </Link>
           </div>
         </div>
@@ -84,16 +91,19 @@ export default async function HomePage() {
           </h2>
           <p className="mt-4 text-base leading-relaxed text-[var(--brand-muted)] md:text-lg">
             {HOTEL.name} ofrece hospedaje sencillo y cálido en{" "}
-            {HOTEL.fullAddress}. Conoce nuestras habitaciones, servicios y
-            tarifas; para confirmar tu estadía, solo llama.
+            {primary?.fullAddress ?? HOTEL.fullAddress}. Cada sucursal tiene su
+            propia dirección, fotos y habitaciones; para confirmar tu estadía,
+            llama a esa sede.
           </p>
         </div>
       </section>
 
+      <BranchCards branches={branches} />
+
       <section className="relative mx-auto max-w-6xl px-6 pb-16 md:pb-20">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
-            Otuzco · 3 estrellas
+            {primary?.city ?? "Otuzco"} · 3 estrellas
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-extrabold text-[var(--brand-ink)] md:text-5xl">
             Habitaciones
@@ -195,13 +205,15 @@ export default async function HomePage() {
               <li>3. Confirma fechas, precio y forma de pago.</li>
             </ol>
             <div className="mt-8 flex flex-wrap gap-3">
-              <PhoneCta />
-              <a
-                href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
-                className="inline-flex items-center justify-center rounded-full border border-[var(--brand-line)] bg-white px-7 py-3.5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-gold)]"
-              >
-                Fijo {HOTEL.phoneLandline}
-              </a>
+              <PhoneCta phone={primary?.phoneMobile ?? HOTEL.phoneMobile} />
+              {(primary?.phoneLandline || HOTEL.phoneLandline) && (
+                <a
+                  href={`tel:${(primary?.phoneLandline || HOTEL.phoneLandline).replace(/\s/g, "")}`}
+                  className="inline-flex items-center justify-center rounded-full border border-[var(--brand-line)] bg-white px-7 py-3.5 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-gold)]"
+                >
+                  Fijo {primary?.phoneLandline || HOTEL.phoneLandline}
+                </a>
+              )}
             </div>
           </div>
           <div className="relative aspect-[4/5] overflow-hidden md:aspect-[5/6]">
@@ -222,25 +234,29 @@ export default async function HomePage() {
             Contacto
           </p>
           <h2 className="mt-3 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
-            Te esperamos en Otuzco
+            Te esperamos en {primary?.city ?? "Otuzco"}
           </h2>
           <p className="mt-4 max-w-xl text-[var(--brand-muted)]">
-            {HOTEL.fullAddress}
+            {primary?.fullAddress ?? HOTEL.fullAddress}
           </p>
           <p className="mt-3 text-[var(--brand-ink)]">
             <a
-              href={`tel:${HOTEL.phoneMobile}`}
+              href={`tel:${primary?.phoneMobile ?? HOTEL.phoneMobile}`}
               className="font-semibold underline-offset-4 hover:underline"
             >
-              Cel. {HOTEL.phoneMobile}
+              Cel. {primary?.phoneMobile ?? HOTEL.phoneMobile}
             </a>
-            <span className="text-[var(--brand-muted)]"> · </span>
-            <a
-              href={`tel:${HOTEL.phoneLandline.replace(/\s/g, "")}`}
-              className="underline-offset-4 hover:underline"
-            >
-              Telf. {HOTEL.phoneLandline}
-            </a>
+            {(primary?.phoneLandline || HOTEL.phoneLandline) && (
+              <>
+                <span className="text-[var(--brand-muted)]"> · </span>
+                <a
+                  href={`tel:${(primary?.phoneLandline || HOTEL.phoneLandline).replace(/\s/g, "")}`}
+                  className="underline-offset-4 hover:underline"
+                >
+                  Telf. {primary?.phoneLandline || HOTEL.phoneLandline}
+                </a>
+              </>
+            )}
           </p>
           <p className="mt-6 max-w-lg text-sm text-[var(--brand-muted)]">
             También puedes usar el botón <strong>Consultar</strong> en la

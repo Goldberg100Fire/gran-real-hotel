@@ -41,11 +41,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const catalog = await getCatalog();
+  const branchId =
+    typeof body === "object" &&
+    body !== null &&
+    "branchId" in body &&
+    typeof (body as { branchId: unknown }).branchId === "string"
+      ? (body as { branchId: string }).branchId.trim()
+      : undefined;
+
+  const catalog = await getCatalog(branchId || undefined);
   const result = answerHotelQuestion(message, {
     roomTypes: catalog.roomTypes,
     priceOffers: catalog.priceOffers,
     services: catalog.services,
+    branch: catalog.branch,
   });
   return NextResponse.json(result);
 }

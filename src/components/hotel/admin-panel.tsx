@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { formatDate, formatMoney } from "@/lib/format";
 import { compressImageFile } from "@/lib/image-compress";
 import { useRouter } from "next/navigation";
+import { DEFAULT_BRANCH_ID } from "@/lib/hotel-info";
 import {
   PAYMENT_METHOD_LABELS,
   PRICE_OFFER_KIND_LABELS,
@@ -17,6 +18,7 @@ import {
   STAFF_ROLE_LABELS,
   type GalleryImagePublic,
   type GuestProfile,
+  type HotelBranch,
   type MailMessage,
   type PriceOffer,
   type PriceOfferKind,
@@ -32,6 +34,7 @@ import {
 } from "@/lib/types";
 
 interface Snapshot {
+  branches: HotelBranch[];
   rooms: Room[];
   roomTypes: RoomType[];
   galleryImages: GalleryImagePublic[];
@@ -62,6 +65,7 @@ interface Snapshot {
     guestsRegistered?: number;
     staffActive?: number;
     activeOffers?: number;
+    branches?: number;
   };
 }
 
@@ -101,11 +105,22 @@ export function AdminPanel({
     | "tipos"
     | "servicios"
     | "ofertas"
+    | "sucursales"
     | "reservas"
     | "correos"
     | "personal"
     | "clientes"
   >("habitaciones");
+  const [activeBranchId, setActiveBranchId] = useState(DEFAULT_BRANCH_ID);
+  const [branchName, setBranchName] = useState("");
+  const [branchCity, setBranchCity] = useState("");
+  const [branchRegion, setBranchRegion] = useState("");
+  const [branchAddress, setBranchAddress] = useState("");
+  const [branchPhoneMobile, setBranchPhoneMobile] = useState("");
+  const [branchPhoneLandline, setBranchPhoneLandline] = useState("");
+  const [branchTagline, setBranchTagline] = useState("");
+  const [branchHeroFile, setBranchHeroFile] = useState<File | null>(null);
+  const [branchBusy, setBranchBusy] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomFloor, setNewRoomFloor] = useState(1);
   const [newRoomTypeId, setNewRoomTypeId] = useState("");
@@ -169,6 +184,15 @@ export function AdminPanel({
     const data = (await response.json()) as Snapshot;
     setSnapshot(data);
     if (data.csrfToken) setCsrfToken(data.csrfToken);
+    const branches = data.branches ?? [];
+    setActiveBranchId((current) => {
+      if (branches.some((branch) => branch.id === current)) return current;
+      return (
+        branches.find((branch) => branch.isPrimary)?.id ||
+        branches[0]?.id ||
+        DEFAULT_BRANCH_ID
+      );
+    });
     setNewRoomTypeId((current) => current || data.roomTypes[0]?.id || "");
     setOfferPrices((current) => {
       if (Object.keys(current).length > 0) return current;
@@ -187,6 +211,18 @@ export function AdminPanel({
       return data.galleryImages?.[0]?.path || "";
     });
   }, [router]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    const types = snapshot.roomTypes.filter(
+      (type) => type.branchId === activeBranchId,
+    );
+    setNewRoomTypeId((current) =>
+      types.some((type) => type.id === current)
+        ? current
+        : types[0]?.id || "",
+    );
+  }, [snapshot, activeBranchId]);
 
   const adminFetch = useCallback(
     async (url: string, init: RequestInit = {}) => {
@@ -426,6 +462,7 @@ export function AdminPanel({
           number: newRoomNumber.trim(),
           floor: newRoomFloor,
           roomTypeId: newRoomTypeId,
+          branchId: activeBranchId,
         }),
       });
       const data = await response.json();
@@ -508,6 +545,7 @@ export function AdminPanel({
         kind: offerKind,
         startDate: offerStart,
         endDate: offerEnd,
+        branchId: activeBranchId,
         priority: offerPriority,
         prices: offerKind === "oferta" || offerKind === "fiesta" ? {} : prices,
         minNights:
@@ -559,6 +597,66 @@ export function AdminPanel({
     await loadSummary();
   }
 
+  async function addBranch(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setInfo(null);
+    if (!branchHeroFile) {
+      setError("Sube la foto de la nueva sede (fachada o edificio)");
+      return;
+    }
+    setBranchBusy(true);
+    try {
+      const compressed = await compressImageFile(branchHeroFile);
+      const response = await adminFetch("/api/admin/branches", {
+        method: "POST",
+        body: JSON.stringify({
+          name: branchName,
+          city: branchCity,
+          region: branchRegion,
+          address: branchAddress,
+          phoneMobile: branchPhoneMobile,
+          phoneLandline: branchPhoneLandline,
+          tagline: branchTagline,
+          heroPhoto: {
+            contentType: compressed.contentType,
+            data: compressed.dataBase64,
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "No se pudo crear la sucursal");
+        return;
+      }
+      setInfo(
+        `Sucursal “${data.branch?.city || branchCity}” creada con su foto. Ahora agrega habitaciones de esa sede.`,
+      );
+      setBranchName("");
+      setBranchCity("");
+      setBranchRegion("");
+      setBranchAddress("");
+      setBranchPhoneMobile("");
+      setBranchPhoneLandline("");
+      setBranchTagline("");
+      setBranchHeroFile(null);
+      if (data.branch?.id) setActiveBranchId(data.branch.id);
+      await loadSummary();
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function patchBranch(id: string, patch: Record<string, unknown>) {
+    const response = await adminFetch("/api/admin/branches", {
+      method: "PATCH",
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Error al actualizar sede");
+    await loadSummary();
+  }
+
   async function addRoomType(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -578,6 +676,7 @@ export function AdminPanel({
           maxGuests: Number(newTypeGuests),
           bedType: newTypeBeds,
           imagePath: "",
+          branchId: activeBranchId,
           serviceIds: newTypeServices,
         }),
       });
@@ -670,6 +769,22 @@ export function AdminPanel({
     createRooms: role === "jefe",
   };
 
+  const branches = snapshot.branches ?? [];
+  const activeBranch =
+    branches.find((branch) => branch.id === activeBranchId) ?? branches[0];
+  const branchRooms = snapshot.rooms.filter(
+    (room) => room.branchId === activeBranchId,
+  );
+  const branchTypes = snapshot.roomTypes.filter(
+    (type) => type.branchId === activeBranchId,
+  );
+  const branchOffers = (snapshot.priceOffers ?? []).filter(
+    (offer) => offer.branchId === activeBranchId,
+  );
+  const branchGallery = (snapshot.galleryImages ?? []).filter(
+    (image) => image.branchId === activeBranchId,
+  );
+
   const tabs = (
     [
       ["habitaciones", "Habitaciones"],
@@ -679,6 +794,9 @@ export function AdminPanel({
             ["servicios", "Servicios"],
             ["ofertas", "Ofertas y fiestas"],
           ] as const)
+        : []),
+      ...(permissions.manageStaff
+        ? ([["sucursales", "Sucursales"] as const] as const)
         : []),
       ["reservas", "Reservas"],
       ...(permissions.manageStaff ? [["clientes", "Clientes"] as const] : []),
@@ -705,30 +823,59 @@ export function AdminPanel({
         </p>
       </div>
 
+      {branches.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-[var(--brand-line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-muted)]">
+              Sede en edición
+            </p>
+            <p className="text-sm text-[var(--brand-muted)]">
+              Habitaciones, fotos y ofertas se guardan solo en esta sucursal.
+            </p>
+          </div>
+          <select
+            className={`${selectClass} sm:max-w-xs`}
+            value={activeBranchId}
+            onChange={(event) => {
+              setActiveBranchId(event.target.value);
+              setOpenFloors(null);
+              setEditingRoomId(null);
+            }}
+          >
+            {branches.map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {branch.city}
+                {branch.isPrimary ? " (principal)" : ""}
+                {!branch.active ? " · pausada" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
             label: "Habitaciones",
-            value: snapshot.stats.totalRooms,
-            hint: "Inventario",
+            value: branchRooms.length,
+            hint: activeBranch?.city || "Esta sede",
           },
           {
             label: "Disponibles",
-            value: snapshot.stats.availableRooms,
+            value: branchRooms.filter((room) => room.status === "disponible")
+              .length,
             hint: "Listas para vender",
           },
           {
             label: "Ocupadas",
-            value: snapshot.stats.occupiedRooms,
+            value: branchRooms.filter((room) => room.status === "ocupada")
+              .length,
             hint: "En uso ahora",
           },
           {
             label: "Ofertas",
-            value:
-              snapshot.stats.activeOffers ??
-              snapshot.priceOffers?.filter((o) => o.active).length ??
-              0,
-            hint: "Activas",
+            value: branchOffers.filter((offer) => offer.active).length,
+            hint: "Activas en sede",
           },
         ].map((item) => (
           <div
@@ -829,7 +976,7 @@ export function AdminPanel({
                     value={newRoomTypeId}
                     onChange={(event) => setNewRoomTypeId(event.target.value)}
                   >
-                    {snapshot.roomTypes.map((type) => (
+                    {branchTypes.map((type) => (
                       <option key={type.id} value={type.id}>
                         {type.name}
                       </option>
@@ -856,7 +1003,7 @@ export function AdminPanel({
 
           {(() => {
             const query = roomSearch.trim().toLowerCase();
-            const filtered = snapshot.rooms.filter((room) => {
+            const filtered = branchRooms.filter((room) => {
               if (roomStatusFilter !== "all" && room.status !== roomStatusFilter) {
                 return false;
               }
@@ -865,7 +1012,7 @@ export function AdminPanel({
               }
               if (!query) return true;
               const typeName =
-                snapshot.roomTypes.find((type) => type.id === room.roomTypeId)
+                branchTypes.find((type) => type.id === room.roomTypeId)
                   ?.name ?? "";
               return (
                 room.number.toLowerCase().includes(query) ||
@@ -936,7 +1083,7 @@ export function AdminPanel({
                       onChange={(event) => setRoomTypeFilter(event.target.value)}
                     >
                       <option value="all">Todos</option>
-                      {snapshot.roomTypes.map((type) => (
+                      {branchTypes.map((type) => (
                         <option key={type.id} value={type.id}>
                           {type.name}
                         </option>
@@ -958,7 +1105,7 @@ export function AdminPanel({
                 </div>
 
                 <p className="text-xs text-[var(--brand-muted)]">
-                  Mostrando {filtered.length} de {snapshot.rooms.length} · por
+                  Mostrando {filtered.length} de {branchRooms.length} · por
                   piso (toca para expandir)
                 </p>
 
@@ -1012,7 +1159,7 @@ export function AdminPanel({
                                 <tbody className="divide-y divide-[var(--brand-line)]/80">
                                   {roomsOnFloor.map((room) => {
                                     const typeName =
-                                      snapshot.roomTypes.find(
+                                      branchTypes.find(
                                         (type) => type.id === room.roomTypeId,
                                       )?.name ?? "—";
                                     const isEditing = editingRoomId === room.id;
@@ -1067,7 +1214,7 @@ export function AdminPanel({
                                                 })
                                               }
                                             >
-                                              {snapshot.roomTypes.map((type) => (
+                                              {branchTypes.map((type) => (
                                                 <option
                                                   key={type.id}
                                                   value={type.id}
@@ -1368,7 +1515,7 @@ export function AdminPanel({
           </form>
 
           <div className="grid gap-6">
-            {snapshot.roomTypes.map((type) => (
+            {branchTypes.map((type) => (
               <div
                 key={type.id}
                 className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
@@ -1760,7 +1907,7 @@ export function AdminPanel({
                   </p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {snapshot.roomTypes.map((type) => (
+                  {branchTypes.map((type) => (
                     <div key={type.id} className="space-y-2">
                       <Label>{type.name} — costo total (S/)</Label>
                       <Input
@@ -1801,13 +1948,13 @@ export function AdminPanel({
           </form>
 
           <div className="space-y-4">
-            {(snapshot.priceOffers ?? []).length === 0 && (
+            {(branchOffers ?? []).length === 0 && (
               <p className="rounded-2xl border border-[var(--brand-line)] bg-white px-5 py-8 text-center text-sm text-[var(--brand-muted)]">
                 Aún no hay ofertas. Crea una oferta por noches o un paquete de
                 fiesta.
               </p>
             )}
-            {(snapshot.priceOffers ?? [])
+            {(branchOffers ?? [])
               .slice()
               .sort((a, b) => b.startDate.localeCompare(a.startDate))
               .map((offer) => (
@@ -1873,7 +2020,7 @@ export function AdminPanel({
                   </div>
                   {offer.kind === "fiesta" ? (
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {snapshot.roomTypes.map((type) => (
+                      {branchTypes.map((type) => (
                         <div
                           key={`${offer.id}-${type.id}`}
                           className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
@@ -1895,7 +2042,7 @@ export function AdminPanel({
                     </p>
                   ) : (
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {snapshot.roomTypes.map((type) => (
+                      {branchTypes.map((type) => (
                         <div
                           key={`${offer.id}-${type.id}`}
                           className="rounded-xl bg-[var(--brand-mist)] px-3 py-2 text-sm"
@@ -1915,6 +2062,181 @@ export function AdminPanel({
                   )}
                 </div>
               ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "sucursales" && permissions.manageStaff && (
+        <div className="space-y-8">
+          <form
+            onSubmit={addBranch}
+            className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-6"
+          >
+            <div>
+              <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
+                Nueva sucursal
+              </h3>
+              <p className="mt-1 text-sm text-[var(--brand-muted)]">
+                Tendrá su propia dirección, teléfonos y foto del hotel. Luego
+                agregas habitaciones y ofertas solo para esa sede.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Nombre público</Label>
+                <Input
+                  value={branchName}
+                  onChange={(event) => setBranchName(event.target.value)}
+                  placeholder="Gran Real Hotel Trujillo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ciudad</Label>
+                <Input
+                  value={branchCity}
+                  onChange={(event) => setBranchCity(event.target.value)}
+                  placeholder="Trujillo"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Región</Label>
+                <Input
+                  value={branchRegion}
+                  onChange={(event) => setBranchRegion(event.target.value)}
+                  placeholder="La Libertad"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Frase / tagline</Label>
+                <Input
+                  value={branchTagline}
+                  onChange={(event) => setBranchTagline(event.target.value)}
+                  placeholder="Trujillo te espera"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Dirección</Label>
+                <Input
+                  value={branchAddress}
+                  onChange={(event) => setBranchAddress(event.target.value)}
+                  placeholder="Av. Ejemplo 123"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Celular de la sede</Label>
+                <Input
+                  value={branchPhoneMobile}
+                  onChange={(event) => setBranchPhoneMobile(event.target.value)}
+                  placeholder="9xxxxxxxx"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono fijo (opcional)</Label>
+                <Input
+                  value={branchPhoneLandline}
+                  onChange={(event) =>
+                    setBranchPhoneLandline(event.target.value)
+                  }
+                  placeholder="044 ......"
+                />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Foto propia del hotel (obligatoria)</Label>
+                <Input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="h-10 cursor-pointer bg-white file:mr-3 file:rounded-md file:border-0 file:bg-[var(--brand-deep)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                  onChange={(event) =>
+                    setBranchHeroFile(event.target.files?.[0] ?? null)
+                  }
+                  required
+                />
+                {branchHeroFile ? (
+                  <p className="text-xs text-[var(--brand-ink)]">
+                    Seleccionada: {branchHeroFile.name}
+                  </p>
+                ) : (
+                  <p className="text-xs text-[var(--brand-muted)]">
+                    Fachada o ambiente del nuevo hotel; no uses fotos de Otuzco.
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              type="submit"
+              disabled={branchBusy}
+              className="rounded-lg bg-[var(--brand-deep)]"
+            >
+              {branchBusy ? "Creando…" : "Crear sucursal"}
+            </Button>
+          </form>
+
+          <div className="space-y-4">
+            {branches.map((branch) => (
+              <div
+                key={branch.id}
+                className="grid gap-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5 md:grid-cols-[160px_1fr]"
+              >
+                <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--brand-mist)]">
+                  <Image
+                    src={branch.heroImagePath}
+                    alt={branch.name}
+                    fill
+                    unoptimized={branch.heroImagePath.startsWith("/api/media/")}
+                    className="object-cover"
+                    sizes="160px"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
+                    {branch.isPrimary ? "Principal" : "Sucursal"}
+                    {!branch.active ? " · pausada" : ""}
+                  </p>
+                  <h4 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
+                    {branch.name}
+                  </h4>
+                  <p className="text-sm text-[var(--brand-muted)]">
+                    {branch.fullAddress}
+                  </p>
+                  <p className="text-sm text-[var(--brand-ink)]">
+                    Cel. {branch.phoneMobile}
+                    {branch.phoneLandline
+                      ? ` · Telf. ${branch.phoneLandline}`
+                      : ""}
+                  </p>
+                  <p className="text-xs text-[var(--brand-muted)]">
+                    Página pública: /sede/{branch.slug}
+                  </p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-lg"
+                      onClick={() => setActiveBranchId(branch.id)}
+                    >
+                      Editar contenido
+                    </Button>
+                    {!branch.isPrimary && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() =>
+                          patchBranch(branch.id, {
+                            active: !branch.active,
+                          }).catch((err) => setError(err.message))
+                        }
+                      >
+                        {branch.active ? "Pausar sede" : "Activar sede"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1944,7 +2266,7 @@ export function AdminPanel({
               )}
               {snapshot.reservations.map((reservation) => {
                 const typeName =
-                  snapshot.roomTypes.find(
+                  branchTypes.find(
                     (type) => type.id === reservation.roomTypeId,
                   )?.name ?? "—";
                 return (
