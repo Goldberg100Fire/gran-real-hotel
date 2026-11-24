@@ -129,6 +129,13 @@ export function AdminPanel({
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDescription, setNewServiceDescription] = useState("");
   const [galleryLabel, setGalleryLabel] = useState("");
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomStatusFilter, setRoomStatusFilter] = useState<"all" | RoomStatus>(
+    "all",
+  );
+  const [roomTypeFilter, setRoomTypeFilter] = useState("all");
+  /** Pisos expandídos; vacío = solo el primer piso del filtro. */
+  const [openFloors, setOpenFloors] = useState<number[] | null>(null);
 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
@@ -725,86 +732,250 @@ export function AdminPanel({
             </p>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-[var(--brand-line)]">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-[#f3eee8] text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-muted)]">
-                <tr>
-                  <th className="px-4 py-3">Nº</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3">Estado</th>
-                  <th className="px-4 py-3">Notas</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--brand-line)]/80">
-                {snapshot.rooms.map((room) => {
-                  const typeName =
-                    snapshot.roomTypes.find(
-                      (type) => type.id === room.roomTypeId,
-                    )?.name ?? "—";
-                  return (
-                    <tr
-                      key={room.id}
-                      className="bg-white transition hover:bg-[var(--brand-mist)]/40"
+          {(() => {
+            const query = roomSearch.trim().toLowerCase();
+            const filtered = snapshot.rooms.filter((room) => {
+              if (roomStatusFilter !== "all" && room.status !== roomStatusFilter) {
+                return false;
+              }
+              if (roomTypeFilter !== "all" && room.roomTypeId !== roomTypeFilter) {
+                return false;
+              }
+              if (!query) return true;
+              const typeName =
+                snapshot.roomTypes.find((type) => type.id === room.roomTypeId)
+                  ?.name ?? "";
+              return (
+                room.number.toLowerCase().includes(query) ||
+                String(room.floor).includes(query) ||
+                typeName.toLowerCase().includes(query) ||
+                (room.notes || "").toLowerCase().includes(query)
+              );
+            });
+
+            const floors = [...new Set(filtered.map((room) => room.floor))].sort(
+              (a, b) => a - b,
+            );
+            const defaultOpen = floors[0];
+            const isFloorOpen = (floor: number) => {
+              if (openFloors === null) return floor === defaultOpen;
+              return openFloors.includes(floor);
+            };
+            const toggleFloor = (floor: number) => {
+              setOpenFloors((current) => {
+                const base =
+                  current === null
+                    ? defaultOpen != null
+                      ? [defaultOpen]
+                      : []
+                    : current;
+                return base.includes(floor)
+                  ? base.filter((item) => item !== floor)
+                  : [...base, floor];
+              });
+            };
+
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-col gap-3 rounded-xl border border-[var(--brand-line)] bg-[#f8f4ef] p-3 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Label className="text-xs">Buscar</Label>
+                    <Input
+                      value={roomSearch}
+                      onChange={(event) => setRoomSearch(event.target.value)}
+                      placeholder="Nº, piso, tipo o nota"
+                      className="h-9 bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:w-40">
+                    <Label className="text-xs">Estado</Label>
+                    <select
+                      className={selectClass}
+                      value={roomStatusFilter}
+                      onChange={(event) =>
+                        setRoomStatusFilter(
+                          event.target.value as "all" | RoomStatus,
+                        )
+                      }
                     >
-                      <td className="px-4 py-2.5 font-semibold tabular-nums text-[var(--brand-ink)]">
-                        {room.number}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {permissions.createRooms ? (
-                          <select
-                            className={selectClass}
-                            value={room.roomTypeId}
-                            onChange={(event) =>
-                              patchRoom(room.id, {
-                                roomTypeId: event.target.value,
-                              }).catch((err) => setError(err.message))
-                            }
-                          >
-                            {snapshot.roomTypes.map((type) => (
-                              <option key={type.id} value={type.id}>
-                                {type.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span>{typeName}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <select
-                          className={roomStatusSelectClass(room.status)}
-                          value={room.status}
-                          onChange={(event) =>
-                            patchRoom(room.id, {
-                              status: event.target.value,
-                            }).catch((err) => setError(err.message))
-                          }
+                      <option value="all">Todos</option>
+                      {ROOM_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {ROOM_STATUS_LABELS[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 sm:w-44">
+                    <Label className="text-xs">Tipo</Label>
+                    <select
+                      className={selectClass}
+                      value={roomTypeFilter}
+                      onChange={(event) => setRoomTypeFilter(event.target.value)}
+                    >
+                      <option value="all">Todos</option>
+                      {snapshot.roomTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg px-3 text-sm font-semibold text-[var(--brand-muted)] transition hover:bg-white hover:text-[var(--brand-ink)]"
+                    onClick={() => {
+                      setRoomSearch("");
+                      setRoomStatusFilter("all");
+                      setRoomTypeFilter("all");
+                      setOpenFloors(null);
+                    }}
+                  >
+                    Limpiar
+                  </button>
+                </div>
+
+                <p className="text-xs text-[var(--brand-muted)]">
+                  Mostrando {filtered.length} de {snapshot.rooms.length} · por
+                  piso (toca para expandir)
+                </p>
+
+                {floors.length === 0 ? (
+                  <div className="rounded-xl border border-[var(--brand-line)] bg-white px-4 py-10 text-center text-sm text-[var(--brand-muted)]">
+                    No hay habitaciones con ese filtro.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {floors.map((floor) => {
+                      const roomsOnFloor = filtered
+                        .filter((room) => room.floor === floor)
+                        .sort((a, b) =>
+                          a.number.localeCompare(b.number, undefined, {
+                            numeric: true,
+                          }),
+                        );
+                      const open = isFloorOpen(floor);
+                      return (
+                        <div
+                          key={floor}
+                          className="overflow-hidden rounded-xl border border-[var(--brand-line)] bg-white"
                         >
-                          {ROOM_STATUSES.map((status) => (
-                            <option key={status} value={status}>
-                              {ROOM_STATUS_LABELS[status]}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <Input
-                          defaultValue={room.notes}
-                          placeholder="Sin notas"
-                          className="h-9 border-[var(--brand-line)] bg-transparent"
-                          onBlur={(event) =>
-                            patchRoom(room.id, {
-                              notes: event.target.value,
-                            }).catch((err) => setError(err.message))
-                          }
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleFloor(floor)}
+                            className="flex w-full items-center justify-between gap-3 bg-[#f3eee8] px-4 py-3 text-left transition hover:bg-[#efe8df]"
+                          >
+                            <span className="text-sm font-semibold text-[var(--brand-ink)]">
+                              Piso {floor}
+                            </span>
+                            <span className="text-xs font-medium text-[var(--brand-muted)]">
+                              {roomsOnFloor.length} hab. · {open ? "Ocultar" : "Ver"}
+                            </span>
+                          </button>
+                          {open ? (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full text-left text-sm">
+                                <thead className="border-b border-[var(--brand-line)] text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-muted)]">
+                                  <tr>
+                                    <th className="px-4 py-2.5">Nº</th>
+                                    <th className="px-4 py-2.5">Tipo</th>
+                                    <th className="px-4 py-2.5">Estado</th>
+                                    <th className="px-4 py-2.5">Notas</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--brand-line)]/80">
+                                  {roomsOnFloor.map((room) => {
+                                    const typeName =
+                                      snapshot.roomTypes.find(
+                                        (type) => type.id === room.roomTypeId,
+                                      )?.name ?? "—";
+                                    return (
+                                      <tr
+                                        key={room.id}
+                                        className="bg-white transition hover:bg-[var(--brand-mist)]/40"
+                                      >
+                                        <td className="px-4 py-2.5 font-semibold tabular-nums text-[var(--brand-ink)]">
+                                          {room.number}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          {permissions.createRooms ? (
+                                            <select
+                                              className={selectClass}
+                                              value={room.roomTypeId}
+                                              onChange={(event) =>
+                                                patchRoom(room.id, {
+                                                  roomTypeId: event.target.value,
+                                                }).catch((err) =>
+                                                  setError(err.message),
+                                                )
+                                              }
+                                            >
+                                              {snapshot.roomTypes.map((type) => (
+                                                <option
+                                                  key={type.id}
+                                                  value={type.id}
+                                                >
+                                                  {type.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <span>{typeName}</span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          <select
+                                            className={roomStatusSelectClass(
+                                              room.status,
+                                            )}
+                                            value={room.status}
+                                            onChange={(event) =>
+                                              patchRoom(room.id, {
+                                                status: event.target.value,
+                                              }).catch((err) =>
+                                                setError(err.message),
+                                              )
+                                            }
+                                          >
+                                            {ROOM_STATUSES.map((status) => (
+                                              <option
+                                                key={status}
+                                                value={status}
+                                              >
+                                                {ROOM_STATUS_LABELS[status]}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          <Input
+                                            defaultValue={room.notes}
+                                            placeholder="Sin notas"
+                                            className="h-9 border-[var(--brand-line)] bg-transparent"
+                                            onBlur={(event) =>
+                                              patchRoom(room.id, {
+                                                notes: event.target.value,
+                                              }).catch((err) =>
+                                                setError(err.message),
+                                              )
+                                            }
+                                          />
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
