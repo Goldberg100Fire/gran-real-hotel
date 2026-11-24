@@ -15,7 +15,6 @@ import {
   RESERVATION_STATUS_LABELS,
   ROOM_STATUS_LABELS,
   STAFF_ROLE_LABELS,
-  USER_ROLE_LABELS,
   type GalleryImagePublic,
   type GuestProfile,
   type MailMessage,
@@ -70,6 +69,19 @@ const OFFER_KINDS = Object.keys(PRICE_OFFER_KIND_LABELS) as PriceOfferKind[];
 
 const ROOM_STATUSES = Object.keys(ROOM_STATUS_LABELS) as RoomStatus[];
 const RES_STATUSES = Object.keys(RESERVATION_STATUS_LABELS) as ReservationStatus[];
+
+const selectClass =
+  "h-9 w-full rounded-lg border border-[var(--brand-line)] bg-white px-2.5 text-sm text-[var(--brand-ink)] outline-none transition focus:border-[var(--brand-deep)] focus:ring-2 focus:ring-[var(--brand-deep)]/10";
+
+function roomStatusSelectClass(status: RoomStatus): string {
+  const tone: Record<RoomStatus, string> = {
+    disponible: "border-emerald-200/90 bg-emerald-50 text-emerald-950",
+    ocupada: "border-amber-200/90 bg-amber-50 text-amber-950",
+    mantenimiento: "border-rose-200/90 bg-rose-50 text-rose-950",
+    limpieza: "border-sky-200/90 bg-sky-50 text-sky-950",
+  };
+  return `${selectClass} font-medium ${tone[status]}`;
+}
 
 export function AdminPanel({
   adminEmail,
@@ -169,12 +181,6 @@ export function AdminPanel({
       setError(err instanceof Error ? err.message : "Error"),
     );
   }, [loadSummary]);
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/personal");
-    router.refresh();
-  }
 
   async function patchRoom(id: string, patch: Record<string, unknown>) {
     const response = await adminFetch("/api/admin/rooms", {
@@ -559,69 +565,62 @@ export function AdminPanel({
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--brand-gold)]">
-            {USER_ROLE_LABELS[snapshot.me?.role ?? role]}
+          <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-[var(--brand-ink)]">
+            Administración
+          </h1>
+          <p className="mt-1 text-sm text-[var(--brand-muted)]">
+            Habitaciones, catálogo, personal y reservas
           </p>
-          <p className="mt-1 text-base font-semibold text-[var(--brand-ink)]">
-            {adminName}
-          </p>
-          <p className="text-sm text-[var(--brand-muted)]">{adminEmail}</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={logout}
-          className="rounded-xl border-[var(--brand-line)]"
-        >
-          Cerrar sesión
-        </Button>
+        <p className="text-sm text-[var(--brand-muted)] sm:text-right">
+          <span className="font-medium text-[var(--brand-ink)]">{adminName}</span>
+          <span className="mx-1.5 text-[var(--brand-line)]">·</span>
+          {adminEmail}
+        </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ["Habitaciones", snapshot.stats.totalRooms],
-          ["Disponibles", snapshot.stats.availableRooms],
-          ["Ocupadas", snapshot.stats.occupiedRooms],
-          [
-            "Ofertas activas",
-            snapshot.stats.activeOffers ??
+          {
+            label: "Habitaciones",
+            value: snapshot.stats.totalRooms,
+            hint: "Inventario",
+          },
+          {
+            label: "Disponibles",
+            value: snapshot.stats.availableRooms,
+            hint: "Listas para vender",
+          },
+          {
+            label: "Ocupadas",
+            value: snapshot.stats.occupiedRooms,
+            hint: "En uso ahora",
+          },
+          {
+            label: "Ofertas",
+            value:
+              snapshot.stats.activeOffers ??
               snapshot.priceOffers?.filter((o) => o.active).length ??
               0,
-          ],
-        ].map(([label, value]) => (
+            hint: "Activas",
+          },
+        ].map((item) => (
           <div
-            key={label as string}
-            className="rounded-2xl border border-[var(--brand-line)] bg-white p-5 shadow-[0_12px_30px_-28px_rgba(44,36,30,0.45)]"
+            key={item.label}
+            className="rounded-xl border border-[var(--brand-line)] bg-white px-4 py-3.5"
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
-              {label}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-muted)]">
+              {item.label}
             </p>
-            <p className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)]">
-              {value}
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
+              {item.value}
             </p>
+            <p className="mt-0.5 text-xs text-[var(--brand-muted)]">{item.hint}</p>
           </div>
         ))}
-      </div>
-
-      <div className="overflow-x-auto rounded-2xl border border-[var(--brand-line)] bg-white p-1.5 shadow-[0_12px_30px_-28px_rgba(44,36,30,0.45)]">
-        <div className="flex min-w-max gap-1">
-          {tabs.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                tab === key
-                  ? "bg-[var(--brand-deep)] text-white shadow-sm"
-                  : "text-[var(--brand-muted)] hover:bg-[var(--brand-mist)] hover:text-[var(--brand-ink)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {error && (
@@ -630,67 +629,105 @@ export function AdminPanel({
         </p>
       )}
 
+      <section className="overflow-hidden rounded-2xl border border-[var(--brand-line)] bg-white shadow-[0_18px_40px_-34px_rgba(44,36,30,0.55)]">
+        <div className="overflow-x-auto border-b border-[var(--brand-line)]">
+          <nav className="flex min-w-max px-2" aria-label="Secciones del panel">
+            {tabs.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`relative px-4 py-3.5 text-sm font-semibold transition ${
+                  tab === key
+                    ? "text-[var(--brand-ink)]"
+                    : "text-[var(--brand-muted)] hover:text-[var(--brand-ink)]"
+                }`}
+              >
+                {label}
+                {tab === key ? (
+                  <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-[var(--brand-deep)]" />
+                ) : null}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="p-5 sm:p-6">
       {tab === "habitaciones" && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {permissions.createRooms ? (
             <form
               onSubmit={addRoom}
-              className="grid gap-3 rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)] md:grid-cols-4"
+              className="rounded-xl border border-dashed border-[var(--brand-line)] bg-[var(--brand-mist)]/50 p-4"
             >
-              <div className="space-y-2">
-                <Label>Número</Label>
-                <Input
-                  value={newRoomNumber}
-                  onChange={(event) => setNewRoomNumber(event.target.value)}
-                  placeholder="205"
-                  required
-                />
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--brand-ink)]">
+                    Nueva habitación
+                  </h3>
+                  <p className="text-xs text-[var(--brand-muted)]">
+                    Número, piso y tipo del inventario
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Piso</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={newRoomFloor}
-                  onChange={(event) =>
-                    setNewRoomFloor(Number(event.target.value))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <select
-                  className="h-10 w-full rounded-lg border px-3 text-sm"
-                  value={newRoomTypeId}
-                  onChange={(event) => setNewRoomTypeId(event.target.value)}
-                >
-                  {snapshot.roomTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-end">
-                <Button
-                  type="submit"
-                  className="w-full rounded-full bg-[var(--brand-deep)]"
-                >
-                  Agregar habitación
-                </Button>
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_1.2fr_auto]">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Número</Label>
+                  <Input
+                    value={newRoomNumber}
+                    onChange={(event) => setNewRoomNumber(event.target.value)}
+                    placeholder="205"
+                    required
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Piso</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={newRoomFloor}
+                    onChange={(event) =>
+                      setNewRoomFloor(Number(event.target.value))
+                    }
+                    required
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo</Label>
+                  <select
+                    className={selectClass}
+                    value={newRoomTypeId}
+                    onChange={(event) => setNewRoomTypeId(event.target.value)}
+                  >
+                    {snapshot.roomTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="submit"
+                    className="h-9 w-full rounded-lg bg-[var(--brand-deep)] px-5 md:w-auto"
+                  >
+                    Agregar
+                  </Button>
+                </div>
               </div>
             </form>
           ) : (
-            <p className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm text-[var(--brand-muted)]">
+            <p className="rounded-xl bg-[var(--brand-mist)] px-4 py-3 text-sm text-[var(--brand-muted)]">
               Como empleado puedes cambiar estado y notas. Solo el jefe agrega
               habitaciones o cambia tipos.
             </p>
           )}
 
-          <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-[var(--brand-line)]">
+          <div className="overflow-x-auto rounded-xl border border-[var(--brand-line)]">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b bg-[var(--brand-mist)] text-[var(--brand-muted)]">
+              <thead className="bg-[#f3eee8] text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-muted)]">
                 <tr>
                   <th className="px-4 py-3">Nº</th>
                   <th className="px-4 py-3">Tipo</th>
@@ -698,19 +735,24 @@ export function AdminPanel({
                   <th className="px-4 py-3">Notas</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[var(--brand-line)]/80">
                 {snapshot.rooms.map((room) => {
                   const typeName =
                     snapshot.roomTypes.find(
                       (type) => type.id === room.roomTypeId,
                     )?.name ?? "—";
                   return (
-                    <tr key={room.id} className="border-b last:border-0">
-                      <td className="px-4 py-3 font-medium">{room.number}</td>
-                      <td className="px-4 py-3">
+                    <tr
+                      key={room.id}
+                      className="bg-white transition hover:bg-[var(--brand-mist)]/40"
+                    >
+                      <td className="px-4 py-2.5 font-semibold tabular-nums text-[var(--brand-ink)]">
+                        {room.number}
+                      </td>
+                      <td className="px-4 py-2.5">
                         {permissions.createRooms ? (
                           <select
-                            className="h-9 rounded-lg border px-2"
+                            className={selectClass}
                             value={room.roomTypeId}
                             onChange={(event) =>
                               patchRoom(room.id, {
@@ -728,9 +770,9 @@ export function AdminPanel({
                           <span>{typeName}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <select
-                          className="h-9 rounded-lg border px-2"
+                          className={roomStatusSelectClass(room.status)}
                           value={room.status}
                           onChange={(event) =>
                             patchRoom(room.id, {
@@ -745,10 +787,11 @@ export function AdminPanel({
                           ))}
                         </select>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <Input
                           defaultValue={room.notes}
-                          placeholder="Notas"
+                          placeholder="Sin notas"
+                          className="h-9 border-[var(--brand-line)] bg-transparent"
                           onBlur={(event) =>
                             patchRoom(room.id, {
                               notes: event.target.value,
@@ -1679,6 +1722,8 @@ export function AdminPanel({
           )}
         </div>
       )}
+        </div>
+      </section>
     </div>
   );
 }

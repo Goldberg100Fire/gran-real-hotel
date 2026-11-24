@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminPanel } from "@/components/hotel/admin-panel";
+import { LogoutButton } from "@/components/hotel/logout-button";
 import { getSessionUser, isStaffRole } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
 import { USER_ROLE_LABELS } from "@/lib/types";
@@ -21,10 +22,10 @@ export default async function AdminPage() {
   }
 
   return (
-    <main className="min-h-[100svh] bg-[linear-gradient(180deg,#f3eee8_0%,#f7f3ef_28%,#f7f3ef_100%)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--brand-line)]/80 bg-[var(--brand-cream)]/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
-          <div className="flex items-center gap-3">
+    <main className="min-h-[100svh] bg-[#efe9e2]">
+      <header className="sticky top-0 z-30 border-b border-[var(--brand-line)] bg-[#f7f3ef]/95 backdrop-blur-md">
+        <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             <Image
               src={HOTEL.logoPath}
               alt={HOTEL.name}
@@ -33,40 +34,33 @@ export default async function AdminPage() {
               className="h-9 w-auto object-contain"
               priority
             />
-            <div className="hidden h-6 w-px bg-[var(--brand-line)] sm:block" />
-            <div className="hidden sm:block">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--brand-gold)]">
+            <div className="hidden h-8 w-px bg-[var(--brand-line)] sm:block" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--brand-gold)]">
                 Panel interno
               </p>
-              <p className="text-sm font-semibold text-[var(--brand-ink)]">
+              <p className="truncate text-sm font-semibold text-[var(--brand-ink)]">
                 {USER_ROLE_LABELS[user.role]}
+                <span className="hidden font-normal text-[var(--brand-muted)] sm:inline">
+                  {" "}
+                  · {user.email}
+                </span>
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="hidden max-w-[220px] truncate text-[var(--brand-muted)] md:inline">
-              {user.name}
-            </span>
+          <div className="flex shrink-0 items-center gap-2">
             <Link
               href="/"
-              className="rounded-lg px-3 py-1.5 text-[var(--brand-muted)] transition hover:bg-white hover:text-[var(--brand-ink)]"
+              className="rounded-lg px-3 py-2 text-sm text-[var(--brand-muted)] transition hover:bg-white hover:text-[var(--brand-ink)]"
             >
               Sitio
             </Link>
+            <LogoutButton />
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-        <div className="mb-8">
-          <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-tight text-[var(--brand-ink)] sm:text-4xl">
-            Administración
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--brand-muted)]">
-            Gestiona habitaciones, fotos, personal y reservas del{" "}
-            {HOTEL.name}.
-          </p>
-        </div>
+      <div className="mx-auto max-w-6xl px-5 py-7 sm:px-6 sm:py-9">
         <AdminPanel
           adminEmail={user.email}
           adminName={user.name}
