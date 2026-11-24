@@ -71,13 +71,15 @@ export async function POST(request: Request) {
       const isJefe =
         member?.role === "jefe" || (member && isOwnerEmail(member.email));
 
+      const uniform = {
+        ok: true,
+        message:
+          "Si el correo es del jefe, te enviamos un código. Revisa tu bandeja.",
+      };
+
       // Respuesta uniforme para no filtrar correos
       if (!isJefe || !member?.passwordHash) {
-        return NextResponse.json({
-          ok: true,
-          message:
-            "Si el correo es del jefe y tiene contraseña, enviamos un código.",
-        });
+        return NextResponse.json(uniform);
       }
 
       const codeLimit = checkRateLimit(
@@ -96,12 +98,12 @@ export async function POST(request: Request) {
 
       const code = createLoginCode();
       await saveLoginCode(email, code);
-      await sendLoginCodeEmail({ to: email, code });
-      return NextResponse.json({
-        ok: true,
-        needsCode: true,
-        message: "Revisa tu correo: te enviamos un código de recuperación.",
-      });
+      try {
+        await sendLoginCodeEmail({ to: email, code });
+      } catch {
+        // Misma respuesta aunque falle el envío
+      }
+      return NextResponse.json(uniform);
     }
 
     if (action === "jefe-confirm") {

@@ -15,6 +15,7 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
+  const [setupStep, setSetupStep] = useState<"email" | "code">("email");
   const [jefeStep, setJefeStep] = useState<"email" | "code">("email");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,20 +33,6 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
         body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
-      if (data.needsSetup) {
-        setMode("setup");
-        setPassword("");
-        setConfirm("");
-        setInfo(data.message);
-        return;
-      }
-      if (data.needsReset) {
-        setMode("setup");
-        setPassword("");
-        setConfirm("");
-        setInfo(data.message);
-        return;
-      }
       if (!response.ok) throw new Error(data.error || "No se pudo entrar");
       router.push(nextPath);
       router.refresh();
@@ -60,11 +47,31 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
+      if (setupStep === "email") {
+        const response = await fetch("/api/auth/setup-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "request", email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo enviar");
+        setInfo(data.message);
+        setSetupStep("code");
+        return;
+      }
+
       const response = await fetch("/api/auth/setup-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, confirm }),
+        body: JSON.stringify({
+          action: "confirm",
+          email,
+          code,
+          password,
+          confirm,
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo guardar");
@@ -92,7 +99,7 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "No se pudo enviar");
         setInfo(data.message);
-        if (data.needsCode) setJefeStep("code");
+        setJefeStep("code");
         return;
       }
 
@@ -152,7 +159,7 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               Entrar al panel
             </h2>
             <p className="mt-2 text-sm text-[var(--brand-muted)]">
-              Solo correos autorizados por el jefe. Correo y contraseña.
+              Solo correos autorizados. Correo y contraseña.
             </p>
           </div>
           <div className="space-y-2">
@@ -193,13 +200,15 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               className="text-left text-[var(--brand-muted)] underline-offset-4 hover:underline"
               onClick={() => {
                 setMode("setup");
-                setInfo(
-                  "Si es tu primer acceso y el jefe ya autorizó tu correo, crea tu contraseña aquí.",
-                );
+                setSetupStep("email");
+                setCode("");
+                setPassword("");
+                setConfirm("");
+                setInfo(null);
                 setError(null);
               }}
             >
-              Primer acceso: crear contraseña
+              Primer acceso: verificar correo y crear contraseña
             </button>
             <button
               type="button"
@@ -235,8 +244,8 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               Crear contraseña
             </h2>
             <p className="mt-2 text-sm text-[var(--brand-muted)]">
-              Mínimo 8 caracteres, con letras y un número. Solo si tu correo ya
-              fue autorizado.
+              Te enviamos un código a tu correo autorizado. Sin ese código no se
+              puede crear la contraseña.
             </p>
           </div>
           <div className="space-y-2">
@@ -248,49 +257,76 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="h-11 rounded-xl"
+              disabled={setupStep === "code"}
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-password">Nueva contraseña</Label>
-            <Input
-              id="setup-password"
-              type="password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="h-11 rounded-xl"
-              autoComplete="new-password"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="setup-confirm">Confirmar</Label>
-            <Input
-              id="setup-confirm"
-              type="password"
-              required
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              className="h-11 rounded-xl"
-              autoComplete="new-password"
-            />
-          </div>
+          {setupStep === "code" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="setup-code">Código del correo</Label>
+                <Input
+                  id="setup-code"
+                  inputMode="numeric"
+                  required
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  className="h-11 rounded-xl tracking-[0.3em]"
+                  placeholder="123456"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-password">Nueva contraseña</Label>
+                <Input
+                  id="setup-password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="h-11 rounded-xl"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="setup-confirm">Confirmar</Label>
+                <Input
+                  id="setup-confirm"
+                  type="password"
+                  required
+                  value={confirm}
+                  onChange={(event) => setConfirm(event.target.value)}
+                  className="h-11 rounded-xl"
+                  autoComplete="new-password"
+                />
+              </div>
+            </>
+          )}
           <Button
             type="submit"
             disabled={loading}
             className="h-11 w-full rounded-full bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
           >
-            {loading ? "Guardando..." : "Guardar e entrar"}
+            {loading
+              ? "Procesando..."
+              : setupStep === "email"
+                ? "Enviar código al correo"
+                : "Verificar y entrar"}
           </Button>
           <button
             type="button"
             className="w-full text-sm text-[var(--brand-muted)] underline underline-offset-4"
             onClick={() => {
+              if (setupStep === "code") {
+                setSetupStep("email");
+                setCode("");
+                setInfo(null);
+                return;
+              }
               setMode("login");
               setInfo(null);
               setError(null);
             }}
           >
-            Volver al inicio de sesión
+            {setupStep === "code" ? "Usar otro correo" : "Volver al inicio de sesión"}
           </button>
         </form>
       )}
@@ -387,8 +423,8 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
               Pedir recuperación
             </h2>
             <p className="mt-2 text-sm text-[var(--brand-muted)]">
-              El jefe debe autorizar tu solicitud en el panel (Personal). Luego
-              podrás crear una nueva contraseña.
+              El jefe autoriza en el panel. Luego usa “Primer acceso” para
+              recibir un código y crear la nueva contraseña.
             </p>
           </div>
           <div className="space-y-2">

@@ -8,10 +8,7 @@ import {
 } from "@/lib/auth";
 import { verifyPassword } from "@/lib/passwords";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
-import {
-  getAuthorizedStaff,
-  isStaffResetAuthorized,
-} from "@/lib/store";
+import { getAuthorizedStaff } from "@/lib/store";
 
 export async function POST(request: Request) {
   try {
@@ -53,37 +50,19 @@ export async function POST(request: Request) {
     }
 
     const member = await getAuthorizedStaff(email);
-
-    // Misma respuesta genérica si no existe / no autorizado / mala clave.
-    if (!member) {
-      return NextResponse.json(
+    const invalid = () =>
+      NextResponse.json(
         { error: "Correo o contraseña incorrectos" },
         { status: 401 },
       );
-    }
 
-    if (!member.passwordHash) {
-      return NextResponse.json({
-        needsSetup: true,
-        email: member.email,
-        message:
-          "Es tu primer acceso. Crea tu contraseña para entrar al panel.",
-      });
+    // Sin filtrar: no password / no autorizado / mala clave → misma respuesta.
+    if (!member?.passwordHash) {
+      return invalid();
     }
 
     if (!verifyPassword(password, member.passwordHash)) {
-      if (isStaffResetAuthorized(member)) {
-        return NextResponse.json({
-          needsReset: true,
-          email: member.email,
-          message:
-            "El jefe autorizó un cambio de contraseña. Define una nueva.",
-        });
-      }
-      return NextResponse.json(
-        { error: "Correo o contraseña incorrectos" },
-        { status: 401 },
-      );
+      return invalid();
     }
 
     const user = await buildSessionUser({
@@ -91,10 +70,7 @@ export async function POST(request: Request) {
       name: member.name,
     });
     if (!isStaffRole(user.role)) {
-      return NextResponse.json(
-        { error: "Correo o contraseña incorrectos" },
-        { status: 401 },
-      );
+      return invalid();
     }
 
     await setSessionCookie(user);
