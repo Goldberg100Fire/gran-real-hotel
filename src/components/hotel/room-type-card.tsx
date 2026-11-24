@@ -21,15 +21,22 @@ export function RoomTypeCard({
   const price = displayPrice ?? roomType.basePrice;
   const showBase =
     basePriceLabel && displayPrice != null && displayPrice !== roomType.basePrice;
+  const imageSrc =
+    roomType.imagePath &&
+    roomType.imagePath.startsWith("/api/media/") &&
+    roomType.imageUpdatedAt
+      ? `${roomType.imagePath}?v=${encodeURIComponent(roomType.imageUpdatedAt)}`
+      : roomType.imagePath;
 
   return (
     <article className="group flex h-full flex-col overflow-hidden bg-white shadow-[0_22px_50px_-34px_rgba(44,36,30,0.55)] ring-1 ring-[var(--brand-line)]">
       <div className="relative aspect-[4/3] overflow-hidden bg-[var(--brand-mist)]">
-        {roomType.imagePath ? (
+        {imageSrc ? (
           <Image
-            src={roomType.imagePath}
+            src={imageSrc}
             alt={roomType.name}
             fill
+            unoptimized={imageSrc.startsWith("/api/media/")}
             className="object-cover transition duration-700 group-hover:scale-[1.04]"
             sizes="(max-width: 768px) 100vw, 33vw"
           />

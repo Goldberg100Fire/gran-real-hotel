@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, formatMoney } from "@/lib/format";
 import { HOTEL_ROOM_IMAGES } from "@/lib/hotel-images";
+import { compressImageFile } from "@/lib/image-compress";
 import { useRouter } from "next/navigation";
 import {
   PAYMENT_METHOD_LABELS,
@@ -189,6 +190,32 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+  }
+
+  async function uploadRoomPhoto(typeId: string, file: File) {
+    setError(null);
+    const compressed = await compressImageFile(file);
+    const response = await adminFetch("/api/admin/room-images", {
+      method: "POST",
+      body: JSON.stringify({
+        roomTypeId: typeId,
+        contentType: compressed.contentType,
+        data: compressed.dataBase64,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "No se pudo subir la foto");
+    }
+    await loadSummary();
+  }
+
+  function roomImageSrc(type: RoomType): string {
+    if (!type.imagePath) return "";
+    if (type.imagePath.startsWith("/api/media/") && type.imageUpdatedAt) {
+      return `${type.imagePath}?v=${encodeURIComponent(type.imageUpdatedAt)}`;
+    }
+    return type.imagePath;
   }
 
   async function patchReservation(id: string, status: ReservationStatus) {
@@ -762,9 +789,10 @@ export function AdminPanel({
                   <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--brand-mist)]">
                     {type.imagePath ? (
                       <Image
-                        src={type.imagePath}
+                        src={roomImageSrc(type)}
                         alt={type.name}
                         fill
+                        unoptimized={type.imagePath.startsWith("/api/media/")}
                         className="object-cover"
                         sizes="180px"
                       />
@@ -834,8 +862,30 @@ export function AdminPanel({
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Foto pública</Label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
+                      Subir foto nueva
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (!file) return;
+                          uploadRoomPhoto(type.id, file).catch((err) =>
+                            setError(err.message),
+                          );
+                        }}
+                      />
+                    </label>
+                    <p className="text-xs text-[var(--brand-muted)]">
+                      JPG, PNG o WebP. Se comprime al subir. También puedes
+                      elegir una foto de ejemplo abajo.
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                     {HOTEL_ROOM_IMAGES.map((image) => (
                       <button

@@ -6,7 +6,11 @@ import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
 import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
 import { validateGuestDocument } from "./document";
-import { isAllowedRoomImage } from "./hotel-images";
+import {
+  isAllowedRoomImage,
+  isStockRoomImage,
+  roomTypeMediaPath,
+} from "./hotel-images";
 import type {
   GuestProfile,
   HotelStore,
@@ -20,6 +24,7 @@ import type {
   Room,
   RoomStatus,
   RoomType,
+  RoomTypeImageBlob,
   Service,
   StaffMember,
   StaffMemberPublic,
@@ -28,6 +33,16 @@ import type {
 import { hashPassword, validatePasswordStrength } from "./passwords";
 import { getOwnerEmails, isOwnerEmail, normalizeEmail } from "./auth";
 import { validateOfferDates } from "./pricing";
+
+/** Evita mandar el base64 de fotos en el resumen del panel. */
+function roomTypeWithoutBlob(roomType: RoomType): RoomType {
+  if (!roomType.imageBlob) return roomType;
+  const { imageBlob: _omit, ...rest } = roomType;
+  return {
+    ...rest,
+    imageUpdatedAt: roomType.imageBlob.updatedAt,
+  };
+}
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "hotel.json");
@@ -280,7 +295,7 @@ export async function getCatalog() {
   const store = await readStore();
   return {
     services: store.services,
-    roomTypes: store.roomTypes,
+    roomTypes: store.roomTypes.map(roomTypeWithoutBlob),
     rooms: store.rooms,
     priceOffers: store.priceOffers,
   };
@@ -462,7 +477,7 @@ export async function getAvailability(checkIn?: string, checkOut?: string) {
     }
 
     return {
-      roomType: type,
+      roomType: roomTypeWithoutBlob(type),
       totalRooms: typeRooms.length,
       availableCount,
       services: store.services.filter((service) =>
@@ -868,10 +883,38 @@ export async function updateRoomType(
       throw new Error("Foto no permitida");
     }
     roomType.imagePath = patch.imagePath;
+    // Al elegir una foto de catálogo, se quita la subida previa.
+    if (isStockRoomImage(patch.imagePath)) {
+      delete roomType.imageBlob;
+      delete roomType.imageUpdatedAt;
+    }
   }
 
   await writeStore(store);
-  return roomType;
+  return roomTypeWithoutBlob(roomType);
+}
+
+export async function getRoomTypeImageBlob(
+  typeId: string,
+): Promise<RoomTypeImageBlob | null> {
+  const store = await readStore();
+  const roomType = store.roomTypes.find((item) => item.id === typeId);
+  return roomType?.imageBlob ?? null;
+}
+
+export async function setRoomTypeUploadedImage(
+  typeId: string,
+  blob: RoomTypeImageBlob,
+): Promise<RoomType> {
+  const store = await readStore();
+  const roomType = store.roomTypes.find((item) => item.id === typeId);
+  if (!roomType) throw new Error("Tipo no encontrado");
+
+  roomType.imageBlob = blob;
+  roomType.imagePath = roomTypeMediaPath(typeId);
+  roomType.imageUpdatedAt = blob.updatedAt;
+  await writeStore(store);
+  return roomTypeWithoutBlob(roomType);
 }
 
 export async function createRoomType(input: {
@@ -919,7 +962,7 @@ export async function createRoomType(input: {
 
   store.roomTypes.push(roomType);
   await writeStore(store);
-  return roomType;
+  return roomTypeWithoutBlob(roomType);
 }
 
 export async function createService(input: {
@@ -1329,7 +1372,7 @@ export async function getAdminSnapshot() {
 
   return {
     rooms: store.rooms,
-    roomTypes: store.roomTypes,
+    roomTypes: store.roomTypes.map(roomTypeWithoutBlob),
     services: store.services,
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,

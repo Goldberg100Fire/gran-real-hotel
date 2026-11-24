@@ -61,6 +61,13 @@ export interface Service {
   icon: string;
 }
 
+export interface RoomTypeImageBlob {
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  /** Base64 sin prefijo data: */
+  data: string;
+  updatedAt: string;
+}
+
 export interface RoomType {
   id: string;
   name: string;
@@ -69,7 +76,12 @@ export interface RoomType {
   maxGuests: number;
   bedType: string;
   imageGradient: string;
+  /** Ruta pública: stock /hotel/... o /api/media/room/{id} */
   imagePath?: string;
+  /** Foto subida por el jefe (persistida en el catálogo). */
+  imageBlob?: RoomTypeImageBlob;
+  /** Para cache-bust de fotos subidas (sin enviar el blob). */
+  imageUpdatedAt?: string;
   serviceIds: string[];
 }
 
