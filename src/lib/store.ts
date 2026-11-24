@@ -8,6 +8,7 @@ import { createSeedStore } from "./seed";
 import { validateGuestDocument } from "./document";
 import {
   galleryMediaPath,
+  inferRoomTypeIdFromPath,
   isAllowedRoomImage,
   isStockRoomImage,
   roomTypeMediaPath,
@@ -107,6 +108,27 @@ function ensureCatalog(store: HotelStore): HotelStore {
   // Solo siembra el catálogo inicial si está vacío (el jefe puede borrar fotos).
   if (store.galleryImages.length === 0) {
     store.galleryImages = seedGalleryImages();
+  } else {
+    // Migra fotos antiguas sin tipo hacia el tipo que corresponda por ruta.
+    for (const image of store.galleryImages) {
+      if (image.roomTypeId) continue;
+      const inferred = inferRoomTypeIdFromPath(image.path);
+      if (inferred) image.roomTypeId = inferred;
+    }
+  }
+
+  // Asegura que la foto pública de cada tipo sea una de sus propias fotos.
+  for (const roomType of store.roomTypes) {
+    const typePhotos = store.galleryImages.filter(
+      (image) => image.roomTypeId === roomType.id,
+    );
+    if (typePhotos.length === 0) continue;
+    const valid = typePhotos.some((image) => image.path === roomType.imagePath);
+    if (!valid) {
+      roomType.imagePath = typePhotos[0]!.path;
+      delete roomType.imageBlob;
+      delete roomType.imageUpdatedAt;
+    }
   }
 
   return store;
@@ -992,6 +1014,7 @@ export async function getGalleryImageBlob(
 export async function addGalleryImage(input: {
   label: string;
   blob: RoomTypeImageBlob;
+  roomTypeId?: string | null;
 }): Promise<GalleryImagePublic> {
   const label = input.label.trim() || "Foto habitación";
   try {
@@ -1002,16 +1025,31 @@ export async function addGalleryImage(input: {
   }
 
   const store = await readStore();
+  const roomTypeId = input.roomTypeId ? String(input.roomTypeId) : null;
+  if (roomTypeId && !store.roomTypes.some((type) => type.id === roomTypeId)) {
+    throw new Error("Tipo de habitación no encontrado");
+  }
+
   const id = `gallery-${crypto.randomUUID()}`;
   const image: GalleryImage = {
     id,
     label,
     path: galleryMediaPath(id),
+    roomTypeId,
     imageBlob: input.blob,
     imageUpdatedAt: input.blob.updatedAt,
     createdAt: new Date().toISOString(),
   };
   store.galleryImages.push(image);
+
+  // Si el tipo aún no tiene foto (o solo stock vacío), usa esta como principal.
+  if (roomTypeId) {
+    const roomType = store.roomTypes.find((type) => type.id === roomTypeId);
+    if (roomType && !roomType.imagePath) {
+      roomType.imagePath = image.path;
+    }
+  }
+
   await writeStore(store);
   return galleryWithoutBlob(image);
 }
@@ -1020,18 +1058,37 @@ export async function deleteGalleryImage(imageId: string): Promise<void> {
   const store = await readStore();
   const index = store.galleryImages.findIndex((item) => item.id === imageId);
   if (index < 0) throw new Error("Foto no encontrada en el catálogo");
-  if (store.galleryImages.length <= 1) {
+
+  const removed = store.galleryImages[index]!;
+  const sameType = store.galleryImages.filter(
+    (item) =>
+      item.id !== imageId &&
+      (removed.roomTypeId
+        ? item.roomTypeId === removed.roomTypeId
+        : true),
+  );
+  if (removed.roomTypeId && sameType.length === 0) {
+    // Puede quedar sin fotos de ese tipo; se permite y se limpia imagePath.
+  } else if (!removed.roomTypeId && store.galleryImages.length <= 1) {
     throw new Error("Debe quedar al menos una foto en el catálogo");
   }
 
-  const [removed] = store.galleryImages.splice(index, 1);
-  const fallback = store.galleryImages[0]!;
+  store.galleryImages.splice(index, 1);
+
+  const fallback =
+    sameType[0] ||
+    store.galleryImages.find((item) => item.roomTypeId === removed.roomTypeId) ||
+    store.galleryImages[0];
+
   for (const roomType of store.roomTypes) {
-    if (roomType.imagePath === removed?.path) {
+    if (roomType.imagePath !== removed.path) continue;
+    if (fallback) {
       roomType.imagePath = fallback.path;
-      delete roomType.imageBlob;
-      delete roomType.imageUpdatedAt;
+    } else {
+      delete roomType.imagePath;
     }
+    delete roomType.imageBlob;
+    delete roomType.imageUpdatedAt;
   }
   await writeStore(store);
 

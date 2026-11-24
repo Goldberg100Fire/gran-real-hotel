@@ -253,23 +253,37 @@ export function AdminPanel({
     await loadSummary();
   }
 
-  async function addGalleryPhoto(file: File) {
+  async function addGalleryPhoto(
+    file: File,
+    roomTypeId?: string,
+    labelOverride?: string,
+  ) {
     setError(null);
     const compressed = await compressImageFile(file);
     const response = await adminFetch("/api/admin/gallery", {
       method: "POST",
       body: JSON.stringify({
-        label: galleryLabel.trim() || file.name.replace(/\.[^.]+$/, ""),
+        label:
+          labelOverride?.trim() ||
+          galleryLabel.trim() ||
+          file.name.replace(/\.[^.]+$/, ""),
+        roomTypeId: roomTypeId || null,
         contentType: compressed.contentType,
         data: compressed.dataBase64,
       }),
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || "No se pudo agregar la foto al catálogo");
+      throw new Error(data.error || "No se pudo agregar la foto");
     }
     setGalleryLabel("");
     await loadSummary();
+  }
+
+  function photosForType(typeId: string): GalleryImagePublic[] {
+    return (snapshot?.galleryImages ?? []).filter(
+      (image) => image.roomTypeId === typeId,
+    );
   }
 
   async function removeGalleryPhoto(imageId: string) {
@@ -735,83 +749,6 @@ export function AdminPanel({
 
       {tab === "tipos" && permissions.editPricing && (
         <div className="space-y-8">
-          <div className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]">
-            <div>
-              <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold">
-                Catálogo de fotos
-              </h3>
-              <p className="mt-1 text-sm text-[var(--brand-muted)]">
-                Agrega o elimina fotos del hotel. Luego asígnalas a cada tipo de
-                habitación. Si borras una foto en uso, la habitación pasa a otra
-                del catálogo.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[180px] flex-1 space-y-2">
-                <Label>Nombre de la foto</Label>
-                <Input
-                  value={galleryLabel}
-                  onChange={(event) => setGalleryLabel(event.target.value)}
-                  placeholder="Ej. Doble con vista"
-                />
-              </div>
-              <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
-                Agregar foto
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (!file) return;
-                    addGalleryPhoto(file).catch((err) =>
-                      setError(err.message),
-                    );
-                  }}
-                />
-              </label>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {(snapshot.galleryImages ?? []).map((image) => (
-                <div
-                  key={image.id}
-                  className="overflow-hidden rounded-xl ring-1 ring-[var(--brand-line)]"
-                >
-                  <div className="relative aspect-[4/3]">
-                    <Image
-                      src={mediaSrc(image.path, image.imageUpdatedAt)}
-                      alt={image.label}
-                      fill
-                      unoptimized={image.path.startsWith("/api/media/")}
-                      className="object-cover"
-                      sizes="180px"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-2 bg-[var(--brand-mist)] px-2 py-2">
-                    <p className="truncate text-xs font-medium">{image.label}</p>
-                    <button
-                      type="button"
-                      className="shrink-0 text-xs font-semibold text-red-700 underline-offset-2 hover:underline"
-                      onClick={() =>
-                        removeGalleryPhoto(image.id).catch((err) =>
-                          setError(err.message),
-                        )
-                      }
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {(snapshot.galleryImages ?? []).length === 0 && (
-              <p className="text-sm text-[var(--brand-muted)]">
-                No hay fotos. Agrega al menos una para asignar a las habitaciones.
-              </p>
-            )}
-          </div>
-
           <form
             onSubmit={addRoomType}
             className="space-y-4 rounded-2xl bg-white p-6 ring-1 ring-[var(--brand-line)]"
@@ -874,34 +811,46 @@ export function AdminPanel({
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Foto del catálogo</Label>
+              <Label>Foto inicial (opcional)</Label>
+              <p className="text-xs text-[var(--brand-muted)]">
+                Después de crear el tipo podrás agregar y eliminar fotos solo
+                para esa habitación.
+              </p>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {(snapshot.galleryImages ?? []).map((image) => (
-                  <button
-                    key={image.id}
-                    type="button"
-                    onClick={() => setNewTypeImage(image.path)}
-                    className={`overflow-hidden rounded-xl ring-2 ${
-                      newTypeImage === image.path
-                        ? "ring-[var(--brand-gold)]"
-                        : "ring-transparent"
-                    }`}
-                  >
-                    <div className="relative aspect-[4/3]">
-                      <Image
-                        src={mediaSrc(image.path, image.imageUpdatedAt)}
-                        alt={image.label}
-                        fill
-                        unoptimized={image.path.startsWith("/api/media/")}
-                        className="object-cover"
-                        sizes="160px"
-                      />
-                    </div>
-                    <p className="bg-[var(--brand-mist)] px-2 py-1 text-xs">
-                      {image.label}
-                    </p>
-                  </button>
-                ))}
+                {(snapshot.galleryImages ?? [])
+                  .filter((image) => !image.roomTypeId)
+                  .concat(
+                    (snapshot.galleryImages ?? []).filter((image) =>
+                      Boolean(image.roomTypeId),
+                    ),
+                  )
+                  .slice(0, 8)
+                  .map((image) => (
+                    <button
+                      key={image.id}
+                      type="button"
+                      onClick={() => setNewTypeImage(image.path)}
+                      className={`overflow-hidden rounded-xl ring-2 ${
+                        newTypeImage === image.path
+                          ? "ring-[var(--brand-gold)]"
+                          : "ring-transparent"
+                      }`}
+                    >
+                      <div className="relative aspect-[4/3]">
+                        <Image
+                          src={mediaSrc(image.path, image.imageUpdatedAt)}
+                          alt={image.label}
+                          fill
+                          unoptimized={image.path.startsWith("/api/media/")}
+                          className="object-cover"
+                          sizes="160px"
+                        />
+                      </div>
+                      <p className="bg-[var(--brand-mist)] px-2 py-1 text-xs">
+                        {image.label}
+                      </p>
+                    </button>
+                  ))}
               </div>
             </div>
             <div className="space-y-2">
@@ -1020,24 +969,51 @@ export function AdminPanel({
                 </div>
 
                 <div className="space-y-3">
-                  <Label>Foto pública (elige del catálogo)</Label>
-                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                    {(snapshot.galleryImages ?? []).map((image) => (
-                      <button
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <Label>Fotos de {type.name}</Label>
+                      <p className="mt-1 text-xs text-[var(--brand-muted)]">
+                        Solo fotos de esta habitación. Agrega las correctas y
+                        elimina las que no correspondan. La marcada en dorado es
+                        la pública.
+                      </p>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
+                      Agregar foto
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/*"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (!file) return;
+                          addGalleryPhoto(file, type.id, type.name).catch(
+                            (err) => setError(err.message),
+                          );
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {photosForType(type.id).map((image) => (
+                      <div
                         key={`${type.id}-${image.id}`}
-                        type="button"
-                        onClick={() =>
-                          patchRoomType(type.id, {
-                            imagePath: image.path,
-                          }).catch((err) => setError(err.message))
-                        }
                         className={`overflow-hidden rounded-lg ring-2 ${
                           type.imagePath === image.path
                             ? "ring-[var(--brand-gold)]"
-                            : "ring-transparent"
+                            : "ring-[var(--brand-line)]"
                         }`}
                       >
-                        <div className="relative aspect-[4/3]">
+                        <button
+                          type="button"
+                          className="relative block aspect-[4/3] w-full"
+                          onClick={() =>
+                            patchRoomType(type.id, {
+                              imagePath: image.path,
+                            }).catch((err) => setError(err.message))
+                          }
+                        >
                           <Image
                             src={mediaSrc(image.path, image.imageUpdatedAt)}
                             alt={image.label}
@@ -1046,23 +1022,32 @@ export function AdminPanel({
                             className="object-cover"
                             sizes="140px"
                           />
+                        </button>
+                        <div className="flex items-center justify-between gap-2 bg-[var(--brand-mist)] px-2 py-1.5">
+                          <p className="truncate text-[11px] font-medium">
+                            {type.imagePath === image.path
+                              ? "Pública"
+                              : "Usar"}
+                          </p>
+                          <button
+                            type="button"
+                            className="shrink-0 text-[11px] font-semibold text-red-700 underline-offset-2 hover:underline"
+                            onClick={() =>
+                              removeGalleryPhoto(image.id).catch((err) =>
+                                setError(err.message),
+                              )
+                            }
+                          >
+                            Eliminar
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     ))}
                   </div>
-                  {type.imagePath?.startsWith("/api/media/room/") && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-full"
-                      onClick={() =>
-                        deleteRoomPhoto(type.id).catch((err) =>
-                          setError(err.message),
-                        )
-                      }
-                    >
-                      Quitar foto directa de este tipo
-                    </Button>
+                  {photosForType(type.id).length === 0 && (
+                    <p className="text-sm text-[var(--brand-muted)]">
+                      Esta habitación aún no tiene fotos. Agrega al menos una.
+                    </p>
                   )}
                 </div>
 

@@ -1,26 +1,35 @@
-/** Fotos iniciales de ejemplo. El jefe puede agregar y eliminar del catálogo. */
+/** Fotos iniciales por tipo. El jefe puede agregar y eliminar por habitación. */
 export const HOTEL_ROOM_IMAGES = [
   {
     path: "/hotel/simple.png",
     label: "Simple",
+    roomTypeId: "type-simple",
   },
   {
     path: "/hotel/matrimonial-1.png",
-    label: "Matrimonial 1",
+    label: "Matrimonial",
+    roomTypeId: "type-matrimonial",
   },
   {
     path: "/hotel/matrimonial-2.png",
-    label: "Matrimonial 2",
+    label: "Suite Matrimonial",
+    roomTypeId: "type-suite",
   },
   {
     path: "/hotel/doble.png",
     label: "Doble",
+    roomTypeId: "type-doble",
+  },
+  {
+    path: "/hotel/doble.png",
+    label: "Familiar",
+    roomTypeId: "type-familiar",
   },
 ] as const;
 
-export const HOTEL_ROOM_IMAGE_PATHS = HOTEL_ROOM_IMAGES.map(
-  (item) => item.path,
-) as string[];
+export const HOTEL_ROOM_IMAGE_PATHS = [
+  ...new Set(HOTEL_ROOM_IMAGES.map((item) => item.path)),
+] as string[];
 
 const MEDIA_ROOM_PATH =
   /^\/api\/media\/room\/[a-zA-Z0-9][a-zA-Z0-9_-]{0,80}$/;
@@ -55,7 +64,11 @@ export function isAllowedRoomImage(
   galleryPaths?: string[],
 ): boolean {
   if (!path) return false;
-  if (isStockRoomImage(path) || isUploadedRoomImage(path) || isGalleryMediaPath(path)) {
+  if (
+    isStockRoomImage(path) ||
+    isUploadedRoomImage(path) ||
+    isGalleryMediaPath(path)
+  ) {
     return true;
   }
   if (galleryPaths?.includes(path)) return true;
@@ -66,6 +79,7 @@ export function seedGalleryImages(): {
   id: string;
   label: string;
   path: string;
+  roomTypeId: string;
   createdAt: string;
 }[] {
   const createdAt = new Date().toISOString();
@@ -73,8 +87,18 @@ export function seedGalleryImages(): {
     id: `gallery-seed-${index + 1}`,
     label: image.label,
     path: image.path,
+    roomTypeId: image.roomTypeId,
     createdAt,
   }));
+}
+
+/** Asigna roomTypeId a fotos viejas del catálogo según la ruta. */
+export function inferRoomTypeIdFromPath(path: string): string | null {
+  if (path.includes("simple")) return "type-simple";
+  if (path.includes("matrimonial-1")) return "type-matrimonial";
+  if (path.includes("matrimonial-2")) return "type-suite";
+  if (path.includes("doble")) return "type-doble";
+  return null;
 }
 
 /** Límite para caber en documentos Firestore (~1 MiB). */

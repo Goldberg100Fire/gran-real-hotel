@@ -159,12 +159,14 @@ export interface LoginCode {
   createdAt: string;
 }
 
-/** Foto del catálogo del hotel (elegible para cualquier tipo). */
+/** Foto del catálogo, normalmente ligada a un tipo de habitación. */
 export interface GalleryImage {
   id: string;
   label: string;
   /** /hotel/... o /api/media/gallery/{id} */
   path: string;
+  /** Si está definido, solo se usa en ese tipo (ej. type-doble). */
+  roomTypeId?: string | null;
   imageBlob?: RoomTypeImageBlob;
   imageUpdatedAt?: string;
   createdAt: string;

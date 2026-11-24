@@ -51,6 +51,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const label = String(body.label ?? "Foto habitación");
+    const roomTypeId =
+      typeof body.roomTypeId === "string" && body.roomTypeId.trim()
+        ? body.roomTypeId.trim()
+        : null;
     const contentType = String(body.contentType ?? "");
     const data = String(body.data ?? "").replace(/\s+/g, "");
 
@@ -86,7 +90,7 @@ export async function POST(request: Request) {
       updatedAt: new Date().toISOString(),
     };
 
-    const image = await addGalleryImage({ label, blob });
+    const image = await addGalleryImage({ label, blob, roomTypeId });
     return NextResponse.json({ image }, { status: 201 });
   } catch (error) {
     const message =
