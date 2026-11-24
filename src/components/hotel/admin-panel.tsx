@@ -194,18 +194,57 @@ export function AdminPanel({
 
   async function uploadRoomPhoto(typeId: string, file: File) {
     setError(null);
-    const compressed = await compressImageFile(file);
+    const previous = snapshot?.roomTypes.find((item) => item.id === typeId);
+    const hadUploaded = previous?.imagePath?.startsWith("/api/media/");
+    try {
+      const compressed = await compressImageFile(file);
+      const response = await adminFetch("/api/admin/room-images", {
+        method: "POST",
+        body: JSON.stringify({
+          roomTypeId: typeId,
+          contentType: compressed.contentType,
+          data: compressed.dataBase64,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "No se pudo subir la foto");
+      }
+      await loadSummary();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo subir la foto";
+      // Si ya había (o quedó) una foto subida tras el error, la eliminamos.
+      if (hadUploaded) {
+        try {
+          await adminFetch("/api/admin/room-images", {
+            method: "DELETE",
+            body: JSON.stringify({ roomTypeId: typeId }),
+          });
+          await loadSummary();
+          setError(
+            `${message}. Se eliminó la foto subida para que puedas intentar de nuevo.`,
+          );
+          return;
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      setError(
+        `${message}. Puedes usar “Eliminar foto subida” si necesitas limpiarla.`,
+      );
+    }
+  }
+
+  async function deleteRoomPhoto(typeId: string) {
+    setError(null);
     const response = await adminFetch("/api/admin/room-images", {
-      method: "POST",
-      body: JSON.stringify({
-        roomTypeId: typeId,
-        contentType: compressed.contentType,
-        data: compressed.dataBase64,
-      }),
+      method: "DELETE",
+      body: JSON.stringify({ roomTypeId: typeId }),
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || "No se pudo subir la foto");
+      throw new Error(data.error || "No se pudo eliminar la foto");
     }
     await loadSummary();
   }
@@ -875,15 +914,27 @@ export function AdminPanel({
                           const file = event.target.files?.[0];
                           event.target.value = "";
                           if (!file) return;
-                          uploadRoomPhoto(type.id, file).catch((err) =>
-                            setError(err.message),
-                          );
+                          void uploadRoomPhoto(type.id, file);
                         }}
                       />
                     </label>
+                    {type.imagePath?.startsWith("/api/media/") && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() =>
+                          deleteRoomPhoto(type.id).catch((err) =>
+                            setError(err.message),
+                          )
+                        }
+                      >
+                        Eliminar foto subida
+                      </Button>
+                    )}
                     <p className="text-xs text-[var(--brand-muted)]">
-                      JPG, PNG o WebP. Se comprime al subir. También puedes
-                      elegir una foto de ejemplo abajo.
+                      JPG, PNG o WebP. Si falla la subida, se limpia la foto
+                      para reintentar. También puedes elegir una de ejemplo.
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-4">

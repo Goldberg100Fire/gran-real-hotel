@@ -910,9 +910,35 @@ export async function setRoomTypeUploadedImage(
   const roomType = store.roomTypes.find((item) => item.id === typeId);
   if (!roomType) throw new Error("Tipo no encontrado");
 
+  // Validar que el base64 decodifica antes de persistir.
+  try {
+    const bytes = Buffer.from(blob.data, "base64");
+    if (bytes.length < 32) throw new Error("Imagen vacía");
+  } catch {
+    throw new Error("La foto está dañada y no se guardó");
+  }
+
   roomType.imageBlob = blob;
   roomType.imagePath = roomTypeMediaPath(typeId);
   roomType.imageUpdatedAt = blob.updatedAt;
+  await writeStore(store);
+  return roomTypeWithoutBlob(roomType);
+}
+
+/** Quita una foto subida y vuelve a una de ejemplo. */
+export async function clearRoomTypeUploadedImage(
+  typeId: string,
+  fallbackPath = "/hotel/simple.png",
+): Promise<RoomType> {
+  const store = await readStore();
+  const roomType = store.roomTypes.find((item) => item.id === typeId);
+  if (!roomType) throw new Error("Tipo no encontrado");
+
+  delete roomType.imageBlob;
+  delete roomType.imageUpdatedAt;
+  roomType.imagePath = isStockRoomImage(fallbackPath)
+    ? fallbackPath
+    : "/hotel/simple.png";
   await writeStore(store);
   return roomTypeWithoutBlob(roomType);
 }
