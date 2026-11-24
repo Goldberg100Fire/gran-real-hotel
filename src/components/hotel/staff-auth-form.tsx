@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type Mode = "login" | "setup" | "jefe-recover" | "empleado-request";
+
+type PublicConfig = {
+  emailAuthEnabled?: boolean;
+  firestoreConfigured?: boolean;
+  adminBootstrapEnabled?: boolean;
+  storage?: string;
+};
 
 export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
   const router = useRouter();
@@ -20,6 +27,37 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [configHint, setConfigHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/config/public")
+      .then((response) => response.json())
+      .then((data: PublicConfig) => {
+        if (cancelled) return;
+        if (!data.firestoreConfigured && !data.adminBootstrapEnabled) {
+          setConfigHint(
+            "Faltan variables en el servidor (Firestore o ADMIN_PASSWORD). El administrador debe configurarlas en Vercel.",
+          );
+        } else if (!data.firestoreConfigured) {
+          setConfigHint(
+            "Puedes entrar con la contraseña de arranque. Para guardar fotos y personal de forma permanente, configura Firestore en Vercel.",
+          );
+        } else if (!data.emailAuthEnabled) {
+          setConfigHint(
+            "El correo (Resend) no está configurado: no se podrán enviar códigos de primer acceso o recuperación.",
+          );
+        } else {
+          setConfigHint(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setConfigHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -161,6 +199,11 @@ export function StaffAuthForm({ nextPath = "/admin" }: { nextPath?: string }) {
             <p className="mt-2 text-sm text-[var(--brand-muted)]">
               Solo correos autorizados. Correo y contraseña.
             </p>
+            {configHint && (
+              <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
+                {configHint}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Correo</Label>

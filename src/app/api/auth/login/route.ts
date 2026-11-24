@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import {
   AuthConfigError,
   buildSessionUser,
+  isOwnerEmail,
   isStaffRole,
   normalizeEmail,
   setSessionCookie,
 } from "@/lib/auth";
-import { verifyPassword } from "@/lib/passwords";
+import {
+  isBootstrapAdminPasswordConfigured,
+  verifyBootstrapAdminPassword,
+  verifyPassword,
+} from "@/lib/passwords";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import { getAuthorizedStaff } from "@/lib/store";
 
@@ -56,12 +61,20 @@ export async function POST(request: Request) {
         { status: 401 },
       );
 
-    // Sin filtrar: no password / no autorizado / mala clave → misma respuesta.
-    if (!member?.passwordHash) {
+    if (!member) {
       return invalid();
     }
 
-    if (!verifyPassword(password, member.passwordHash)) {
+    const storedOk = Boolean(
+      member.passwordHash && verifyPassword(password, member.passwordHash),
+    );
+    const bootstrapOk =
+      isOwnerEmail(email) &&
+      isBootstrapAdminPasswordConfigured() &&
+      verifyBootstrapAdminPassword(password);
+
+    // Sin filtrar: no password / no autorizado / mala clave → misma respuesta.
+    if (!storedOk && !bootstrapOk) {
       return invalid();
     }
 

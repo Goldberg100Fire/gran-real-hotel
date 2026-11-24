@@ -61,14 +61,19 @@ export async function sendEmail(input: {
   const data = (await response.json()) as { id?: string };
   const messageId = data.id || `resend-${Date.now()}`;
 
-  await persistOutbox({
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    text: input.text,
-    mode: "resend",
-    delivered: true,
-  });
+  try {
+    await persistOutbox({
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      mode: "resend",
+      delivered: true,
+    });
+  } catch (error) {
+    // El correo ya salió; no fallar el login/OTP por el historial.
+    console.error("No se pudo guardar el correo en el outbox:", error);
+  }
 
   return { delivered: true, mode: "resend", messageId };
 }

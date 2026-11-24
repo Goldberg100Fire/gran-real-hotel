@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
 import { differenceInCalendarDays, parseISO } from "date-fns";
+import type { WriteBatch } from "firebase-admin/firestore";
 import { COLLECTIONS, getDb, isFirestoreConfigured } from "./firebase";
 import { HOTEL } from "./hotel-info";
 import { createSeedStore } from "./seed";
@@ -70,9 +71,6 @@ const DATA_DIR = isServerlessRuntime()
   ? path.join("/tmp", "gran-real-hotel", "data")
   : path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "hotel.json");
-
-const FIRESTORE_REQUIRED_MSG =
-  "En Vercel el panel necesita Firestore. Configura FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY en las variables de entorno del proyecto.";
 
 type GlobalStore = {
   hotelStore?: HotelStore;
@@ -264,53 +262,90 @@ export async function seedFirestore(store: HotelStore = createSeedStore()): Prom
   await batch.commit();
 }
 
+async function commitInChunks(
+  ops: Array<(batch: WriteBatch) => void>,
+): Promise<void> {
+  const db = getDb();
+  const CHUNK = 400;
+  for (let i = 0; i < ops.length; i += CHUNK) {
+    const batch = db.batch();
+    for (const op of ops.slice(i, i + CHUNK)) op(batch);
+    await batch.commit();
+  }
+}
+
 async function writeFirestoreStore(store: HotelStore): Promise<void> {
   const db = getDb();
-  const batch = db.batch();
+  const ops: Array<(batch: WriteBatch) => void> = [];
 
-  batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
-    ...HOTEL,
-    updatedAt: new Date().toISOString(),
-  });
+  ops.push((batch) =>
+    batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
+      ...HOTEL,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
 
   for (const service of store.services) {
-    batch.set(db.collection(COLLECTIONS.services).doc(service.id), service);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.services).doc(service.id), service),
+    );
   }
   for (const roomType of store.roomTypes) {
-    batch.set(db.collection(COLLECTIONS.roomTypes).doc(roomType.id), roomType);
+    ops.push((batch) =>
+      batch.set(
+        db.collection(COLLECTIONS.roomTypes).doc(roomType.id),
+        roomType,
+      ),
+    );
   }
   for (const room of store.rooms) {
-    batch.set(db.collection(COLLECTIONS.rooms).doc(room.id), room);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.rooms).doc(room.id), room),
+    );
   }
   for (const reservation of store.reservations) {
-    batch.set(
-      db.collection(COLLECTIONS.reservations).doc(reservation.id),
-      reservation,
+    ops.push((batch) =>
+      batch.set(
+        db.collection(COLLECTIONS.reservations).doc(reservation.id),
+        reservation,
+      ),
     );
   }
   for (const code of store.loginCodes) {
-    batch.set(db.collection(COLLECTIONS.loginCodes).doc(code.email), code);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.loginCodes).doc(code.email), code),
+    );
   }
   for (const mail of store.mailOutbox.slice(0, 100)) {
-    batch.set(db.collection(COLLECTIONS.mailOutbox).doc(mail.id), mail);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.mailOutbox).doc(mail.id), mail),
+    );
   }
   for (const member of store.staffMembers) {
-    batch.set(
-      db.collection(COLLECTIONS.staffMembers).doc(member.email),
-      member,
+    ops.push((batch) =>
+      batch.set(
+        db.collection(COLLECTIONS.staffMembers).doc(member.email),
+        member,
+      ),
     );
   }
   for (const guest of store.guests) {
-    batch.set(db.collection(COLLECTIONS.guests).doc(guest.document), guest);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.guests).doc(guest.document), guest),
+    );
   }
   for (const offer of store.priceOffers) {
-    batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.priceOffers).doc(offer.id), offer),
+    );
   }
   for (const image of store.galleryImages ?? []) {
-    batch.set(db.collection(COLLECTIONS.galleryImages).doc(image.id), image);
+    ops.push((batch) =>
+      batch.set(db.collection(COLLECTIONS.galleryImages).doc(image.id), image),
+    );
   }
 
-  await batch.commit();
+  await commitInChunks(ops);
   globalForStore.hotelStore = store;
 }
 
@@ -319,35 +354,42 @@ async function readStore(): Promise<HotelStore> {
     try {
       return await readFirestoreStore();
     } catch (error) {
-      console.error("Firestore no disponible:", error);
-      if (isServerlessRuntime()) {
-        throw new Error(FIRESTORE_REQUIRED_MSG);
-      }
+      console.error("Firestore no disponible, usando respaldo local:", error);
       return cloneStore(await ensureFileStore());
     }
-  }
-  if (isServerlessRuntime()) {
-    throw new Error(FIRESTORE_REQUIRED_MSG);
   }
   return cloneStore(await ensureFileStore());
 }
 
 async function writeStore(store: HotelStore): Promise<void> {
+  // Siempre actualiza memoria del proceso (sirve en serverless entre requests calientes).
+  globalForStore.hotelStore = store;
+
   if (isFirestoreConfigured()) {
     try {
       await writeFirestoreStore(store);
       return;
     } catch (error) {
       console.error("Error al guardar en Firestore:", error);
-      if (isServerlessRuntime()) {
-        throw new Error(FIRESTORE_REQUIRED_MSG);
+      if (!isServerlessRuntime()) {
+        await persistFileStore(store);
       }
+      throw new Error(
+        "No se pudo guardar en Firestore. Revisa FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY.",
+      );
     }
   }
-  if (isServerlessRuntime()) {
-    throw new Error(FIRESTORE_REQUIRED_MSG);
+
+  try {
+    await persistFileStore(store);
+  } catch (error) {
+    console.error("No se pudo persistir almacén local:", error);
+    if (isServerlessRuntime()) {
+      // En Vercel sin Firestore los datos viven solo en memoria de la instancia.
+      return;
+    }
+    throw error;
   }
-  await persistFileStore(store);
 }
 
 function nightsBetween(checkIn: string, checkOut: string): number {
@@ -368,8 +410,10 @@ export function isRoomBookable(status: RoomStatus): boolean {
   return status === "disponible" || status === "limpieza";
 }
 
-export function getStorageMode(): "firestore" | "local" {
-  return isFirestoreConfigured() ? "firestore" : "local";
+export function getStorageMode(): "firestore" | "local" | "memory" {
+  if (isFirestoreConfigured()) return "firestore";
+  if (isServerlessRuntime()) return "memory";
+  return "local";
 }
 
 export async function getCatalog() {
@@ -1413,7 +1457,15 @@ export async function ensureOwnerStaffRecords(): Promise<void> {
       changed = true;
     }
   }
-  if (changed) await writeStore(store);
+  if (changed) {
+    try {
+      await writeStore(store);
+    } catch (error) {
+      // Memoria ya tiene a los jefes; no bloquear el login si falla la persistencia.
+      console.error("No se pudo persistir registros de jefe:", error);
+      globalForStore.hotelStore = store;
+    }
+  }
 }
 
 export async function getStaffByEmail(

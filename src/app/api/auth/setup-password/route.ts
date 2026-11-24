@@ -165,6 +165,13 @@ export async function POST(request: Request) {
     }
     const message =
       error instanceof Error ? error.message : "No se pudo guardar";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const isConfig =
+      /Firestore|FIREBASE_|ADMIN_SESSION_SECRET|correo no está configurado|variables de entorno/i.test(
+        message,
+      );
+    return NextResponse.json(
+      { error: message },
+      { status: isConfig ? 503 : 400 },
+    );
   }
 }

@@ -24,6 +24,34 @@ export function verifyPassword(
   return timingSafeEqual(actual, expectedBuf);
 }
 
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) {
+    // Comparación dummy para no filtrar longitud de forma trivial
+    timingSafeEqual(left, left);
+    return false;
+  }
+  return timingSafeEqual(left, right);
+}
+
+/**
+ * Contraseña de arranque del jefe desde ADMIN_PASSWORD (texto o hash scrypt$).
+ * Sirve en Vercel cuando aún no hay Firestore / passwordHash guardado.
+ */
+export function verifyBootstrapAdminPassword(password: string): boolean {
+  const expected = process.env.ADMIN_PASSWORD?.trim();
+  if (!expected || !password) return false;
+  if (expected.startsWith("scrypt$")) {
+    return verifyPassword(password, expected);
+  }
+  return timingSafeStringEqual(password, expected);
+}
+
+export function isBootstrapAdminPasswordConfigured(): boolean {
+  return Boolean(process.env.ADMIN_PASSWORD?.trim());
+}
+
 export function validatePasswordStrength(password: string): string | null {
   if (password.length < 8) {
     return "La contraseña debe tener al menos 8 caracteres";

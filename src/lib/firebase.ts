@@ -11,6 +11,23 @@ export function isFirestoreConfigured(): boolean {
   );
 }
 
+/** Normaliza la private key pegada en Vercel/.env (comillas, \\n, espacios). */
+export function normalizeFirebasePrivateKey(raw: string): string {
+  let key = raw.trim();
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+  key = key.replace(/\\n/g, "\n").replace(/\r\n/g, "\n");
+  // Por si quedó doble-escapado en el panel de Vercel
+  if (key.includes("\\n") && !key.includes("\n-----")) {
+    key = key.replace(/\\n/g, "\n");
+  }
+  return key.replace(/"/g, "").trim();
+}
+
 export function getFirebaseApp(): App {
   if (app) return app;
   if (getApps().length) {
@@ -24,9 +41,9 @@ export function getFirebaseApp(): App {
     );
   }
 
-  const privateKey = process.env
-    .FIREBASE_PRIVATE_KEY!.replace(/\\n/g, "\n")
-    .replace(/"/g, "");
+  const privateKey = normalizeFirebasePrivateKey(
+    process.env.FIREBASE_PRIVATE_KEY!,
+  );
 
   app = initializeApp({
     credential: cert({

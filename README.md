@@ -46,16 +46,21 @@ Abre `http://127.0.0.1:3451`. Sin Firebase, la app usa datos locales de ejemplo.
 
 ### Variables obligatorias en Vercel
 
-En Vercel el disco no se puede usar para guardar datos. Configura:
+Copia en **Vercel → Settings → Environment Variables** (Production) las mismas que ya usas en Cursor:
 
-- `ADMIN_ALLOWED_EMAILS` — correo(s) del jefe  
-- `ADMIN_SESSION_SECRET` — clave ≥ 32 caracteres  
-- `FIREBASE_PROJECT_ID`  
-- `FIREBASE_CLIENT_EMAIL`  
-- `FIREBASE_PRIVATE_KEY` — clave privada del service account (con `\n` escapados)  
-- `RESEND_API_KEY` y `MAIL_FROM` — para códigos de crear/recuperar contraseña  
+| Variable | Para qué |
+|---|---|
+| `ADMIN_ALLOWED_EMAILS` | Correo(s) del jefe |
+| `ADMIN_SESSION_SECRET` | Sesión (≥ 32 caracteres) |
+| `ADMIN_PASSWORD` | Login de arranque del jefe (recomendado en Vercel) |
+| `FIREBASE_PROJECT_ID` | Persistencia real |
+| `FIREBASE_CLIENT_EMAIL` | Persistencia real |
+| `FIREBASE_PRIVATE_KEY` | Clave del service account (con `\n`) |
+| `RESEND_API_KEY` / `MAIL_FROM` | Códigos crear/recuperar contraseña |
 
-Sin Firestore el login en Vercel no puede guardar personal ni contraseñas.
+Después: **Redeploy**. Comprueba `/api/health` → `"storage":"firestore"`.
+
+Sin Firestore la web pública sigue; el jefe puede entrar con `ADMIN_PASSWORD`, pero fotos/empleados no se guardan de forma permanente.
 
 ## Datos del hotel
 
