@@ -721,6 +721,13 @@ export async function deletePriceOffer(id: string): Promise<void> {
   if (index < 0) throw new Error("Oferta no encontrada");
   store.priceOffers.splice(index, 1);
   await writeStore(store);
+  if (isFirestoreConfigured()) {
+    try {
+      await getDb().collection(COLLECTIONS.priceOffers).doc(id).delete();
+    } catch (error) {
+      console.error("No se pudo borrar la oferta en Firestore:", error);
+    }
+  }
 }
 
 export async function getAvailability(
@@ -2053,6 +2060,146 @@ export async function setBranchHeroFromUpload(
     roomTypeId: null,
   });
   return updateBranch(branchId, { heroImagePath: image.path });
+}
+
+/**
+ * Elimina una sucursal y su catálogo (tipos, habitaciones, ofertas, fotos).
+ * La sede principal no se puede borrar.
+ */
+export async function deleteBranch(id: string): Promise<void> {
+  const store = await readStore();
+  const index = store.branches.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Sucursal no encontrada");
+  const branch = store.branches[index]!;
+  if (branch.isPrimary) {
+    throw new Error("No se puede eliminar la sede principal");
+  }
+
+  const typeIds = new Set(
+    store.roomTypes
+      .filter((type) => type.branchId === id)
+      .map((type) => type.id),
+  );
+  const roomIds = store.rooms
+    .filter((room) => room.branchId === id || typeIds.has(room.roomTypeId))
+    .map((room) => room.id);
+  const offerIds = store.priceOffers
+    .filter((offer) => offer.branchId === id)
+    .map((offer) => offer.id);
+  const galleryIds = store.galleryImages
+    .filter(
+      (image) =>
+        image.branchId === id ||
+        (image.roomTypeId ? typeIds.has(image.roomTypeId) : false),
+    )
+    .map((image) => image.id);
+
+  const activeReservation = store.reservations.some(
+    (reservation) =>
+      (reservation.roomId && roomIds.includes(reservation.roomId)) &&
+      (reservation.status === "pendiente" ||
+        reservation.status === "confirmada"),
+  );
+  if (activeReservation) {
+    throw new Error(
+      "No se puede eliminar: hay reservas activas en habitaciones de esta sede",
+    );
+  }
+
+  store.branches.splice(index, 1);
+  store.roomTypes = store.roomTypes.filter((type) => type.branchId !== id);
+  store.rooms = store.rooms.filter((room) => room.branchId !== id);
+  store.priceOffers = store.priceOffers.filter((offer) => offer.branchId !== id);
+  store.galleryImages = store.galleryImages.filter(
+    (image) => image.branchId !== id,
+  );
+  await writeStore(store);
+
+  if (isFirestoreConfigured()) {
+    try {
+      const db = getDb();
+      const ops: Array<(batch: WriteBatch) => void> = [
+        (batch) => batch.delete(db.collection(COLLECTIONS.branches).doc(id)),
+      ];
+      for (const typeId of typeIds) {
+        ops.push((batch) =>
+          batch.delete(db.collection(COLLECTIONS.roomTypes).doc(typeId)),
+        );
+      }
+      for (const roomId of roomIds) {
+        ops.push((batch) =>
+          batch.delete(db.collection(COLLECTIONS.rooms).doc(roomId)),
+        );
+      }
+      for (const offerId of offerIds) {
+        ops.push((batch) =>
+          batch.delete(db.collection(COLLECTIONS.priceOffers).doc(offerId)),
+        );
+      }
+      for (const galleryId of galleryIds) {
+        ops.push((batch) =>
+          batch.delete(db.collection(COLLECTIONS.galleryImages).doc(galleryId)),
+        );
+      }
+      await commitInChunks(ops);
+    } catch (error) {
+      console.error("No se pudo limpiar la sucursal en Firestore:", error);
+    }
+  }
+}
+
+export async function deleteRoomType(id: string): Promise<void> {
+  const store = await readStore();
+  const index = store.roomTypes.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Tipo de habitación no encontrado");
+
+  const roomsUsing = store.rooms.filter((room) => room.roomTypeId === id);
+  if (roomsUsing.length > 0) {
+    throw new Error(
+      `Hay ${roomsUsing.length} habitación(es) con este tipo. Elimínalas o cámbiales el tipo primero.`,
+    );
+  }
+  const activeOffer = store.priceOffers.some(
+    (offer) =>
+      offer.active &&
+      (offer.prices[id] != null || offer.packagePrices?.[id] != null),
+  );
+  if (activeOffer) {
+    throw new Error(
+      "Este tipo está en una oferta activa. Quítalo de la oferta o pausa la oferta primero.",
+    );
+  }
+
+  const galleryIds = store.galleryImages
+    .filter((image) => image.roomTypeId === id)
+    .map((image) => image.id);
+
+  store.roomTypes.splice(index, 1);
+  store.galleryImages = store.galleryImages.filter(
+    (image) => image.roomTypeId !== id,
+  );
+  for (const offer of store.priceOffers) {
+    if (offer.prices[id] != null) delete offer.prices[id];
+    if (offer.packagePrices?.[id] != null) delete offer.packagePrices[id];
+  }
+  await writeStore(store);
+
+  if (isFirestoreConfigured()) {
+    try {
+      const db = getDb();
+      const ops: Array<(batch: WriteBatch) => void> = [
+        (batch) => batch.delete(db.collection(COLLECTIONS.roomTypes).doc(id)),
+      ];
+      for (const galleryId of galleryIds) {
+        ops.push((batch) =>
+          batch.delete(db.collection(COLLECTIONS.galleryImages).doc(galleryId)),
+        );
+      }
+      await commitInChunks(ops);
+    } catch (error) {
+      console.error("No se pudo borrar el tipo en Firestore:", error);
+    }
+  }
 }
 
 export async function getAdminSnapshot() {

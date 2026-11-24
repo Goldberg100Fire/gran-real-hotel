@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { canEditPricing, requireStaff } from "@/lib/auth";
 import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
-import { createRoomType, updateRoomType } from "@/lib/store";
+import { createRoomType, deleteRoomType, updateRoomType } from "@/lib/store";
 
 export async function POST(request: Request) {
   const user = await requireStaff();
@@ -90,6 +90,40 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo actualizar el tipo";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const user = await requireStaff();
+  if (!user) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+  if (!canEditPricing(user.role)) {
+    return NextResponse.json(
+      { error: "Solo el jefe puede eliminar tipos de habitación" },
+      { status: 403 },
+    );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  try {
+    const body = await request.json();
+    const id = String(body.id ?? "");
+    if (!id) {
+      return NextResponse.json({ error: "Falta el id" }, { status: 400 });
+    }
+    await deleteRoomType(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo eliminar el tipo";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

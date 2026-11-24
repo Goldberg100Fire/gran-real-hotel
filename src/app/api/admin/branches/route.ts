@@ -3,6 +3,7 @@ import { canManageStaff, requireStaff } from "@/lib/auth";
 import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import {
   createBranch,
+  deleteBranch,
   listBranches,
   setBranchHeroFromUpload,
   updateBranch,
@@ -176,6 +177,40 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo actualizar";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const user = await requireStaff();
+  if (!user) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  }
+  if (!canManageStaff(user.role)) {
+    return NextResponse.json(
+      { error: "Solo el dueño puede eliminar sucursales" },
+      { status: 403 },
+    );
+  }
+
+  try {
+    await assertCsrf(request);
+  } catch (error) {
+    const { error: message, status } = csrfErrorResponse(error);
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  try {
+    const body = await request.json();
+    const id = String(body.id ?? "");
+    if (!id) {
+      return NextResponse.json({ error: "Falta el id" }, { status: 400 });
+    }
+    await deleteBranch(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "No se pudo eliminar";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

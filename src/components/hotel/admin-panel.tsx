@@ -121,6 +121,19 @@ export function AdminPanel({
   const [branchTagline, setBranchTagline] = useState("");
   const [branchHeroFile, setBranchHeroFile] = useState<File | null>(null);
   const [branchBusy, setBranchBusy] = useState(false);
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [editBranch, setEditBranch] = useState({
+    name: "",
+    city: "",
+    region: "",
+    address: "",
+    phoneMobile: "",
+    phoneLandline: "",
+    tagline: "",
+  });
+  const [editBranchHeroFile, setEditBranchHeroFile] = useState<File | null>(
+    null,
+  );
   const [newRoomNumber, setNewRoomNumber] = useState("");
   const [newRoomFloor, setNewRoomFloor] = useState(1);
   const [newRoomTypeId, setNewRoomTypeId] = useState("");
@@ -654,6 +667,116 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar sede");
+    await loadSummary();
+  }
+
+  function startEditBranch(branch: HotelBranch) {
+    setEditingBranchId(branch.id);
+    setEditBranch({
+      name: branch.name,
+      city: branch.city,
+      region: branch.region,
+      address: branch.address,
+      phoneMobile: branch.phoneMobile,
+      phoneLandline: branch.phoneLandline,
+      tagline: branch.tagline,
+    });
+    setEditBranchHeroFile(null);
+    setError(null);
+    setInfo(null);
+  }
+
+  async function saveEditBranch(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingBranchId) return;
+    setError(null);
+    setInfo(null);
+    setBranchBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        id: editingBranchId,
+        name: editBranch.name,
+        city: editBranch.city,
+        region: editBranch.region,
+        address: editBranch.address,
+        phoneMobile: editBranch.phoneMobile,
+        phoneLandline: editBranch.phoneLandline,
+        tagline: editBranch.tagline,
+      };
+      if (editBranchHeroFile) {
+        const compressed = await compressImageFile(editBranchHeroFile);
+        payload.heroPhoto = {
+          contentType: compressed.contentType,
+          data: compressed.dataBase64,
+        };
+      }
+      const response = await adminFetch("/api/admin/branches", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "No se pudo guardar la sede");
+        return;
+      }
+      setInfo("Sucursal actualizada");
+      setEditingBranchId(null);
+      setEditBranchHeroFile(null);
+      await loadSummary();
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function removeBranch(id: string, city: string) {
+    const ok = window.confirm(
+      `¿Eliminar la sucursal “${city}”? Se borrarán también sus habitaciones, tipos, fotos y ofertas.`,
+    );
+    if (!ok) return;
+    setError(null);
+    setInfo(null);
+    setBranchBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/branches", {
+        method: "DELETE",
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "No se pudo eliminar la sede");
+        return;
+      }
+      setInfo(`Sucursal “${city}” eliminada`);
+      if (editingBranchId === id) setEditingBranchId(null);
+      if (activeBranchId === id) {
+        const fallback =
+          snapshot?.branches.find((branch) => branch.isPrimary)?.id ||
+          snapshot?.branches.find((branch) => branch.id !== id)?.id ||
+          DEFAULT_BRANCH_ID;
+        setActiveBranchId(fallback);
+      }
+      await loadSummary();
+    } finally {
+      setBranchBusy(false);
+    }
+  }
+
+  async function removeRoomType(id: string, name: string) {
+    const ok = window.confirm(
+      `¿Eliminar el tipo “${name}”? Debe estar sin habitaciones asignadas.`,
+    );
+    if (!ok) return;
+    setError(null);
+    const response = await adminFetch("/api/admin/room-types", {
+      method: "DELETE",
+      body: JSON.stringify({ id }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo eliminar el tipo");
+      return;
+    }
+    setInfo(`Tipo “${name}” eliminado`);
     await loadSummary();
   }
 
@@ -1680,6 +1803,21 @@ export function AdminPanel({
                   )}
                 </div>
 
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-lg text-rose-700"
+                    onClick={() =>
+                      removeRoomType(type.id, type.name).catch((err) =>
+                        setError(err.message),
+                      )
+                    }
+                  >
+                    Eliminar tipo
+                  </Button>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Servicios de esta habitación</Label>
                   <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
@@ -2178,63 +2316,243 @@ export function AdminPanel({
             {branches.map((branch) => (
               <div
                 key={branch.id}
-                className="grid gap-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5 md:grid-cols-[160px_1fr]"
+                className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5"
               >
-                <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--brand-mist)]">
-                  <Image
-                    src={branch.heroImagePath}
-                    alt={branch.name}
-                    fill
-                    unoptimized={branch.heroImagePath.startsWith("/api/media/")}
-                    className="object-cover"
-                    sizes="160px"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
-                    {branch.isPrimary ? "Principal" : "Sucursal"}
-                    {!branch.active ? " · pausada" : ""}
-                  </p>
-                  <h4 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
-                    {branch.name}
-                  </h4>
-                  <p className="text-sm text-[var(--brand-muted)]">
-                    {branch.fullAddress}
-                  </p>
-                  <p className="text-sm text-[var(--brand-ink)]">
-                    Cel. {branch.phoneMobile}
-                    {branch.phoneLandline
-                      ? ` · Telf. ${branch.phoneLandline}`
-                      : ""}
-                  </p>
-                  <p className="text-xs text-[var(--brand-muted)]">
-                    Página pública: /sede/{branch.slug}
-                  </p>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-lg"
-                      onClick={() => setActiveBranchId(branch.id)}
-                    >
-                      Editar contenido
-                    </Button>
-                    {!branch.isPrimary && (
+                <div className="grid gap-4 md:grid-cols-[160px_1fr]">
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-[var(--brand-mist)]">
+                    <Image
+                      src={branch.heroImagePath}
+                      alt={branch.name}
+                      fill
+                      unoptimized={branch.heroImagePath.startsWith(
+                        "/api/media/",
+                      )}
+                      className="object-cover"
+                      sizes="160px"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
+                      {branch.isPrimary ? "Principal" : "Sucursal"}
+                      {!branch.active ? " · pausada" : ""}
+                    </p>
+                    <h4 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
+                      {branch.name}
+                    </h4>
+                    <p className="text-sm text-[var(--brand-muted)]">
+                      {branch.fullAddress}
+                    </p>
+                    <p className="text-sm text-[var(--brand-ink)]">
+                      Cel. {branch.phoneMobile}
+                      {branch.phoneLandline
+                        ? ` · Telf. ${branch.phoneLandline}`
+                        : ""}
+                    </p>
+                    <p className="text-xs text-[var(--brand-muted)]">
+                      Página pública: /sede/{branch.slug}
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
                       <Button
                         type="button"
                         variant="outline"
                         className="rounded-lg"
-                        onClick={() =>
-                          patchBranch(branch.id, {
-                            active: !branch.active,
-                          }).catch((err) => setError(err.message))
-                        }
+                        onClick={() => startEditBranch(branch)}
                       >
-                        {branch.active ? "Pausar sede" : "Activar sede"}
+                        {editingBranchId === branch.id
+                          ? "Editando…"
+                          : "Modificar datos"}
                       </Button>
-                    )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => {
+                          setActiveBranchId(branch.id);
+                          setTab("habitaciones");
+                        }}
+                      >
+                        Habitaciones de sede
+                      </Button>
+                      {!branch.isPrimary && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-lg"
+                          onClick={() =>
+                            patchBranch(branch.id, {
+                              active: !branch.active,
+                            }).catch((err) => setError(err.message))
+                          }
+                        >
+                          {branch.active ? "Pausar sede" : "Activar sede"}
+                        </Button>
+                      )}
+                      {!branch.isPrimary && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-lg text-rose-700"
+                          disabled={branchBusy}
+                          onClick={() =>
+                            removeBranch(branch.id, branch.city).catch((err) =>
+                              setError(err.message),
+                            )
+                          }
+                        >
+                          Eliminar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {editingBranchId === branch.id && (
+                  <form
+                    onSubmit={saveEditBranch}
+                    className="space-y-4 rounded-xl border border-[var(--brand-line)] bg-[var(--brand-mist)]/40 p-4"
+                  >
+                    <p className="text-sm font-semibold text-[var(--brand-ink)]">
+                      Editar {branch.city}
+                    </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Nombre</Label>
+                        <Input
+                          value={editBranch.name}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              name: event.target.value,
+                            }))
+                          }
+                          required
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Ciudad</Label>
+                        <Input
+                          value={editBranch.city}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              city: event.target.value,
+                            }))
+                          }
+                          required
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Región</Label>
+                        <Input
+                          value={editBranch.region}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              region: event.target.value,
+                            }))
+                          }
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Tagline</Label>
+                        <Input
+                          value={editBranch.tagline}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              tagline: event.target.value,
+                            }))
+                          }
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label className="text-xs">Dirección</Label>
+                        <Input
+                          value={editBranch.address}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              address: event.target.value,
+                            }))
+                          }
+                          required
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Celular</Label>
+                        <Input
+                          value={editBranch.phoneMobile}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              phoneMobile: event.target.value,
+                            }))
+                          }
+                          required
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Teléfono fijo</Label>
+                        <Input
+                          value={editBranch.phoneLandline}
+                          onChange={(event) =>
+                            setEditBranch((prev) => ({
+                              ...prev,
+                              phoneLandline: event.target.value,
+                            }))
+                          }
+                          className="h-9 bg-white"
+                        />
+                      </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <Label className="text-xs">
+                          Nueva foto del hotel (opcional)
+                        </Label>
+                        <Input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="h-10 cursor-pointer bg-white file:mr-3 file:rounded-md file:border-0 file:bg-[var(--brand-deep)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+                          onChange={(event) =>
+                            setEditBranchHeroFile(
+                              event.target.files?.[0] ?? null,
+                            )
+                          }
+                        />
+                        {editBranchHeroFile ? (
+                          <p className="text-xs text-[var(--brand-ink)]">
+                            Se reemplazará la foto: {editBranchHeroFile.name}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="submit"
+                        disabled={branchBusy}
+                        className="rounded-lg bg-[var(--brand-deep)]"
+                      >
+                        {branchBusy ? "Guardando…" : "Guardar cambios"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => {
+                          setEditingBranchId(null);
+                          setEditBranchHeroFile(null);
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </div>
             ))}
           </div>
