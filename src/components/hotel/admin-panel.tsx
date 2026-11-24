@@ -94,6 +94,7 @@ export function AdminPanel({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<
     | "habitaciones"
@@ -136,6 +137,18 @@ export function AdminPanel({
   const [roomTypeFilter, setRoomTypeFilter] = useState("all");
   /** Pisos expandídos; vacío = solo el primer piso del filtro. */
   const [openFloors, setOpenFloors] = useState<number[] | null>(null);
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
+  const [editRoom, setEditRoom] = useState<{
+    number: string;
+    floor: number;
+    roomTypeId: string;
+    status: RoomStatus;
+    notes: string;
+  } | null>(null);
+  const [pendingDeleteRoomId, setPendingDeleteRoomId] = useState<string | null>(
+    null,
+  );
+  const [roomBusy, setRoomBusy] = useState(false);
 
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/admin/summary");
@@ -197,6 +210,69 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+  }
+
+  function startEditRoom(room: Room) {
+    setError(null);
+    setInfo(null);
+    setPendingDeleteRoomId(null);
+    setEditingRoomId(room.id);
+    setEditRoom({
+      number: room.number,
+      floor: room.floor,
+      roomTypeId: room.roomTypeId,
+      status: room.status,
+      notes: room.notes || "",
+    });
+  }
+
+  function cancelEditRoom() {
+    setEditingRoomId(null);
+    setEditRoom(null);
+  }
+
+  async function saveEditRoom() {
+    if (!editingRoomId || !editRoom) return;
+    setRoomBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      await patchRoom(editingRoomId, {
+        number: editRoom.number.trim(),
+        floor: Number(editRoom.floor),
+        roomTypeId: editRoom.roomTypeId,
+        status: editRoom.status,
+        notes: editRoom.notes,
+      });
+      setInfo(`Habitación ${editRoom.number.trim()} actualizada`);
+      cancelEditRoom();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar");
+    } finally {
+      setRoomBusy(false);
+    }
+  }
+
+  async function removeRoom(id: string) {
+    setRoomBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const response = await adminFetch("/api/admin/rooms", {
+        method: "DELETE",
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo eliminar");
+      setInfo("Habitación eliminada");
+      setPendingDeleteRoomId(null);
+      if (editingRoomId === id) cancelEditRoom();
+      await loadSummary();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar");
+    } finally {
+      setRoomBusy(false);
+    }
   }
 
   async function patchRoomType(id: string, patch: Record<string, unknown>) {
@@ -337,21 +413,28 @@ export function AdminPanel({
   async function addRoom(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const response = await adminFetch("/api/admin/rooms", {
-      method: "POST",
-      body: JSON.stringify({
-        number: newRoomNumber,
-        floor: newRoomFloor,
-        roomTypeId: newRoomTypeId,
-      }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setError(data.error || "No se pudo crear");
-      return;
+    setInfo(null);
+    setRoomBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/rooms", {
+        method: "POST",
+        body: JSON.stringify({
+          number: newRoomNumber.trim(),
+          floor: newRoomFloor,
+          roomTypeId: newRoomTypeId,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error || "No se pudo crear");
+        return;
+      }
+      setInfo(`Habitación ${newRoomNumber.trim()} agregada`);
+      setNewRoomNumber("");
+      await loadSummary();
+    } finally {
+      setRoomBusy(false);
     }
-    setNewRoomNumber("");
-    await loadSummary();
   }
 
   async function addStaff(event: React.FormEvent) {
@@ -635,6 +718,11 @@ export function AdminPanel({
           {error}
         </p>
       )}
+      {info && (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-100">
+          {info}
+        </p>
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-[var(--brand-line)] bg-white shadow-[0_18px_40px_-34px_rgba(44,36,30,0.55)]">
         <div className="overflow-x-auto border-b border-[var(--brand-line)]">
@@ -718,9 +806,10 @@ export function AdminPanel({
                 <div className="flex items-end">
                   <Button
                     type="submit"
+                    disabled={roomBusy}
                     className="h-9 w-full rounded-lg bg-[var(--brand-deep)] px-5 md:w-auto"
                   >
-                    Agregar
+                    {roomBusy ? "Guardando…" : "Agregar"}
                   </Button>
                 </div>
               </div>
@@ -878,9 +967,13 @@ export function AdminPanel({
                                 <thead className="border-b border-[var(--brand-line)] text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--brand-muted)]">
                                   <tr>
                                     <th className="px-4 py-2.5">Nº</th>
+                                    <th className="px-4 py-2.5">Piso</th>
                                     <th className="px-4 py-2.5">Tipo</th>
                                     <th className="px-4 py-2.5">Estado</th>
                                     <th className="px-4 py-2.5">Notas</th>
+                                    <th className="px-4 py-2.5 text-right">
+                                      Acciones
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--brand-line)]/80">
@@ -889,25 +982,56 @@ export function AdminPanel({
                                       snapshot.roomTypes.find(
                                         (type) => type.id === room.roomTypeId,
                                       )?.name ?? "—";
-                                    return (
-                                      <tr
-                                        key={room.id}
-                                        className="bg-white transition hover:bg-[var(--brand-mist)]/40"
-                                      >
-                                        <td className="px-4 py-2.5 font-semibold tabular-nums text-[var(--brand-ink)]">
-                                          {room.number}
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                          {permissions.createRooms ? (
+                                    const isEditing = editingRoomId === room.id;
+                                    const isDeleting =
+                                      pendingDeleteRoomId === room.id;
+
+                                    if (isEditing && editRoom) {
+                                      return (
+                                        <tr
+                                          key={room.id}
+                                          className="bg-[var(--brand-mist)]/50"
+                                        >
+                                          <td className="px-3 py-2.5">
+                                            <Input
+                                              value={editRoom.number}
+                                              onChange={(event) =>
+                                                setEditRoom({
+                                                  ...editRoom,
+                                                  number: event.target.value,
+                                                })
+                                              }
+                                              className="h-9 bg-white"
+                                              disabled={!permissions.createRooms}
+                                            />
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              value={editRoom.floor}
+                                              onChange={(event) =>
+                                                setEditRoom({
+                                                  ...editRoom,
+                                                  floor: Number(
+                                                    event.target.value,
+                                                  ),
+                                                })
+                                              }
+                                              className="h-9 w-20 bg-white"
+                                              disabled={!permissions.createRooms}
+                                            />
+                                          </td>
+                                          <td className="px-3 py-2.5">
                                             <select
                                               className={selectClass}
-                                              value={room.roomTypeId}
+                                              value={editRoom.roomTypeId}
+                                              disabled={!permissions.createRooms}
                                               onChange={(event) =>
-                                                patchRoom(room.id, {
+                                                setEditRoom({
+                                                  ...editRoom,
                                                   roomTypeId: event.target.value,
-                                                }).catch((err) =>
-                                                  setError(err.message),
-                                                )
+                                                })
                                               }
                                             >
                                               {snapshot.roomTypes.map((type) => (
@@ -919,47 +1043,161 @@ export function AdminPanel({
                                                 </option>
                                               ))}
                                             </select>
-                                          ) : (
-                                            <span>{typeName}</span>
-                                          )}
-                                        </td>
-                                        <td className="px-4 py-2.5">
-                                          <select
-                                            className={roomStatusSelectClass(
-                                              room.status,
-                                            )}
-                                            value={room.status}
-                                            onChange={(event) =>
-                                              patchRoom(room.id, {
-                                                status: event.target.value,
-                                              }).catch((err) =>
-                                                setError(err.message),
-                                              )
-                                            }
-                                          >
-                                            {ROOM_STATUSES.map((status) => (
-                                              <option
-                                                key={status}
-                                                value={status}
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <select
+                                              className={roomStatusSelectClass(
+                                                editRoom.status,
+                                              )}
+                                              value={editRoom.status}
+                                              onChange={(event) =>
+                                                setEditRoom({
+                                                  ...editRoom,
+                                                  status: event.target
+                                                    .value as RoomStatus,
+                                                })
+                                              }
+                                            >
+                                              {ROOM_STATUSES.map((status) => (
+                                                <option
+                                                  key={status}
+                                                  value={status}
+                                                >
+                                                  {ROOM_STATUS_LABELS[status]}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <Input
+                                              value={editRoom.notes}
+                                              onChange={(event) =>
+                                                setEditRoom({
+                                                  ...editRoom,
+                                                  notes: event.target.value,
+                                                })
+                                              }
+                                              placeholder="Sin notas"
+                                              className="h-9 bg-white"
+                                            />
+                                          </td>
+                                          <td className="px-3 py-2.5">
+                                            <div className="flex justify-end gap-2">
+                                              <Button
+                                                type="button"
+                                                disabled={roomBusy}
+                                                onClick={() =>
+                                                  void saveEditRoom()
+                                                }
+                                                className="h-8 rounded-lg bg-[var(--brand-deep)] px-3 text-xs"
                                               >
-                                                {ROOM_STATUS_LABELS[status]}
-                                              </option>
-                                            ))}
-                                          </select>
+                                                Guardar
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={roomBusy}
+                                                onClick={cancelEditRoom}
+                                                className="h-8 rounded-lg px-3 text-xs"
+                                              >
+                                                Cancelar
+                                              </Button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+
+                                    return (
+                                      <tr
+                                        key={room.id}
+                                        className="bg-white transition hover:bg-[var(--brand-mist)]/40"
+                                      >
+                                        <td className="px-4 py-2.5 font-semibold tabular-nums text-[var(--brand-ink)]">
+                                          {room.number}
+                                        </td>
+                                        <td className="px-4 py-2.5 tabular-nums text-[var(--brand-muted)]">
+                                          {room.floor}
                                         </td>
                                         <td className="px-4 py-2.5">
-                                          <Input
-                                            defaultValue={room.notes}
-                                            placeholder="Sin notas"
-                                            className="h-9 border-[var(--brand-line)] bg-transparent"
-                                            onBlur={(event) =>
-                                              patchRoom(room.id, {
-                                                notes: event.target.value,
-                                              }).catch((err) =>
-                                                setError(err.message),
-                                              )
-                                            }
-                                          />
+                                          {typeName}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          <span
+                                            className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${
+                                              room.status === "disponible"
+                                                ? "bg-emerald-50 text-emerald-800"
+                                                : room.status === "ocupada"
+                                                  ? "bg-amber-50 text-amber-900"
+                                                  : room.status === "limpieza"
+                                                    ? "bg-sky-50 text-sky-900"
+                                                    : "bg-rose-50 text-rose-900"
+                                            }`}
+                                          >
+                                            {ROOM_STATUS_LABELS[room.status]}
+                                          </span>
+                                        </td>
+                                        <td className="max-w-[180px] truncate px-4 py-2.5 text-[var(--brand-muted)]">
+                                          {room.notes || "—"}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          {isDeleting ? (
+                                            <div className="flex flex-col items-end gap-1.5">
+                                              <p className="text-xs text-rose-700">
+                                                ¿Eliminar {room.number}?
+                                              </p>
+                                              <div className="flex gap-2">
+                                                <Button
+                                                  type="button"
+                                                  disabled={roomBusy}
+                                                  onClick={() =>
+                                                    void removeRoom(room.id)
+                                                  }
+                                                  className="h-8 rounded-lg bg-rose-700 px-3 text-xs hover:bg-rose-800"
+                                                >
+                                                  Sí, eliminar
+                                                </Button>
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  disabled={roomBusy}
+                                                  onClick={() =>
+                                                    setPendingDeleteRoomId(null)
+                                                  }
+                                                  className="h-8 rounded-lg px-3 text-xs"
+                                                >
+                                                  No
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="flex justify-end gap-2">
+                                              <button
+                                                type="button"
+                                                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--brand-ink)] transition hover:bg-[var(--brand-mist)]"
+                                                onClick={() =>
+                                                  startEditRoom(room)
+                                                }
+                                              >
+                                                Editar
+                                              </button>
+                                              {permissions.createRooms ? (
+                                                <button
+                                                  type="button"
+                                                  className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                                  onClick={() => {
+                                                    setEditingRoomId(null);
+                                                    setEditRoom(null);
+                                                    setPendingDeleteRoomId(
+                                                      room.id,
+                                                    );
+                                                  }}
+                                                >
+                                                  Eliminar
+                                                </button>
+                                              ) : null}
+                                            </div>
+                                          )}
                                         </td>
                                       </tr>
                                     );

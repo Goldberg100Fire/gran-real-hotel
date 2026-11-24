@@ -948,12 +948,61 @@ export async function updateRoom(
     room.roomTypeId = patch.roomTypeId;
   }
   if (patch.status) room.status = patch.status;
-  if (typeof patch.notes === "string") room.notes = patch.notes;
-  if (typeof patch.number === "string") room.number = patch.number;
-  if (typeof patch.floor === "number") room.floor = patch.floor;
+  if (typeof patch.notes === "string") room.notes = patch.notes.trim();
+  if (typeof patch.number === "string") {
+    const number = patch.number.trim();
+    if (!number) throw new Error("El número de habitación es obligatorio");
+    if (
+      store.rooms.some(
+        (item) => item.id !== id && item.number.toLowerCase() === number.toLowerCase(),
+      )
+    ) {
+      throw new Error("Ya existe una habitación con ese número");
+    }
+    room.number = number;
+  }
+  if (typeof patch.floor === "number") {
+    if (!Number.isFinite(patch.floor) || patch.floor < 1) {
+      throw new Error("El piso debe ser 1 o mayor");
+    }
+    room.floor = Math.round(patch.floor);
+  }
 
+  store.rooms.sort((a, b) =>
+    a.number.localeCompare(b.number, undefined, { numeric: true }),
+  );
   await writeStore(store);
   return room;
+}
+
+/** Elimina una habitación del inventario (no si tiene reservas activas). */
+export async function deleteRoom(id: string): Promise<void> {
+  const store = await readStore();
+  const index = store.rooms.findIndex((item) => item.id === id);
+  if (index < 0) throw new Error("Habitación no encontrada");
+
+  const active = store.reservations.some(
+    (reservation) =>
+      reservation.roomId === id &&
+      (reservation.status === "pendiente" ||
+        reservation.status === "confirmada"),
+  );
+  if (active) {
+    throw new Error(
+      "No se puede eliminar: la habitación tiene reservas pendientes o confirmadas",
+    );
+  }
+
+  store.rooms.splice(index, 1);
+  await writeStore(store);
+
+  if (isFirestoreConfigured()) {
+    try {
+      await getDb().collection(COLLECTIONS.rooms).doc(id).delete();
+    } catch (error) {
+      console.error("No se pudo borrar la habitación en Firestore:", error);
+    }
+  }
 }
 
 export async function updateRoomType(
@@ -1294,19 +1343,29 @@ export async function createRoom(input: {
   notes?: string;
 }): Promise<Room> {
   const store = await readStore();
+  const number = input.number.trim();
+  if (!number) throw new Error("El número de habitación es obligatorio");
+  const floor = Math.round(Number(input.floor) || 0);
+  if (!Number.isFinite(floor) || floor < 1) {
+    throw new Error("El piso debe ser 1 o mayor");
+  }
   const typeExists = store.roomTypes.some((type) => type.id === input.roomTypeId);
   if (!typeExists) throw new Error("Tipo de habitación inválido");
-  if (store.rooms.some((room) => room.number === input.number)) {
+  if (
+    store.rooms.some(
+      (room) => room.number.toLowerCase() === number.toLowerCase(),
+    )
+  ) {
     throw new Error("Ya existe una habitación con ese número");
   }
 
   const room: Room = {
     id: `room-${crypto.randomUUID()}`,
-    number: input.number,
-    floor: input.floor,
+    number,
+    floor,
     roomTypeId: input.roomTypeId,
     status: input.status ?? "disponible",
-    notes: input.notes ?? "",
+    notes: (input.notes ?? "").trim(),
   };
 
   store.rooms.push(room);
