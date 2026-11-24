@@ -81,6 +81,13 @@ export async function POST(request: Request) {
     }
     const message =
       error instanceof Error ? error.message : "No se pudo iniciar sesión";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const isConfig =
+      /Firestore|FIREBASE_|ADMIN_SESSION_SECRET|variables de entorno/i.test(
+        message,
+      );
+    return NextResponse.json(
+      { error: message },
+      { status: isConfig ? 503 : 400 },
+    );
   }
 }

@@ -38,6 +38,25 @@ npm run dev
 
 Abre `http://127.0.0.1:3451`. Sin Firebase, la app usa datos locales de ejemplo.
 
+## Acceso admin (producción)
+
+1. Entra a https://gran-real-hotel.vercel.app/personal  
+2. Correo del jefe = el de `ADMIN_ALLOWED_EMAILS`  
+3. Primer acceso: crea contraseña con el código que llega al correo  
+
+### Variables obligatorias en Vercel
+
+En Vercel el disco no se puede usar para guardar datos. Configura:
+
+- `ADMIN_ALLOWED_EMAILS` — correo(s) del jefe  
+- `ADMIN_SESSION_SECRET` — clave ≥ 32 caracteres  
+- `FIREBASE_PROJECT_ID`  
+- `FIREBASE_CLIENT_EMAIL`  
+- `FIREBASE_PRIVATE_KEY` — clave privada del service account (con `\n` escapados)  
+- `RESEND_API_KEY` y `MAIL_FROM` — para códigos de crear/recuperar contraseña  
+
+Sin Firestore el login en Vercel no puede guardar personal ni contraseñas.
+
 ## Datos del hotel
 
 - **Dirección:** Calle Tacna Nº 542 · Otuzco · La Libertad  

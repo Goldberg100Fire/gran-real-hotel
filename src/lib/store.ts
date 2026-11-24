@@ -57,8 +57,22 @@ function galleryWithoutBlob(image: GalleryImage): GalleryImagePublic {
   };
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+/** En Vercel/Lambda solo /tmp es escribible; el cwd (/var/task) es de solo lectura. */
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.FUNCTION_NAME,
+  );
+}
+
+const DATA_DIR = isServerlessRuntime()
+  ? path.join("/tmp", "gran-real-hotel", "data")
+  : path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "hotel.json");
+
+const FIRESTORE_REQUIRED_MSG =
+  "En Vercel el panel necesita Firestore. Configura FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY en las variables de entorno del proyecto.";
 
 type GlobalStore = {
   hotelStore?: HotelStore;
@@ -159,7 +173,12 @@ async function ensureFileStore(): Promise<HotelStore> {
     globalForStore.hotelStore = normalizeStore(JSON.parse(raw) as HotelStore);
   } catch {
     globalForStore.hotelStore = createSeedStore();
-    await persistFileStore(globalForStore.hotelStore);
+    try {
+      await persistFileStore(globalForStore.hotelStore);
+    } catch (error) {
+      // En entornos de solo lectura, mantiene el seed en memoria.
+      console.error("No se pudo escribir almacén local:", error);
+    }
   }
 
   return globalForStore.hotelStore;
@@ -300,9 +319,15 @@ async function readStore(): Promise<HotelStore> {
     try {
       return await readFirestoreStore();
     } catch (error) {
-      console.error("Firestore no disponible, usando almacén local:", error);
+      console.error("Firestore no disponible:", error);
+      if (isServerlessRuntime()) {
+        throw new Error(FIRESTORE_REQUIRED_MSG);
+      }
       return cloneStore(await ensureFileStore());
     }
+  }
+  if (isServerlessRuntime()) {
+    throw new Error(FIRESTORE_REQUIRED_MSG);
   }
   return cloneStore(await ensureFileStore());
 }
@@ -313,8 +338,14 @@ async function writeStore(store: HotelStore): Promise<void> {
       await writeFirestoreStore(store);
       return;
     } catch (error) {
-      console.error("Error al guardar en Firestore, usando archivo local:", error);
+      console.error("Error al guardar en Firestore:", error);
+      if (isServerlessRuntime()) {
+        throw new Error(FIRESTORE_REQUIRED_MSG);
+      }
     }
+  }
+  if (isServerlessRuntime()) {
+    throw new Error(FIRESTORE_REQUIRED_MSG);
   }
   await persistFileStore(store);
 }
