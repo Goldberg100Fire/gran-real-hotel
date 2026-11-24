@@ -67,7 +67,7 @@ export default async function SedePage({
 
   return (
     <main>
-      <section className="relative isolate min-h-[70svh] overflow-hidden md:min-h-[85svh]">
+      <section className="relative isolate min-h-[78svh] overflow-hidden md:min-h-[90svh]">
         <div className="absolute inset-0">
           <Image
             src={branch.heroImagePath}
@@ -81,17 +81,25 @@ export default async function SedePage({
           <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(24,18,14,0.92)_0%,rgba(44,36,30,0.55)_52%,rgba(24,18,14,0.28)_100%)]" />
         </div>
         <div className="absolute bottom-0 inset-x-0 h-28 bg-gradient-to-t from-[var(--brand-cream)] to-transparent" />
-        <SiteHeader />
+        <SiteHeader phone={branch.phoneMobile} />
 
-        <div className="relative mx-auto flex min-h-[70svh] max-w-6xl flex-col justify-end px-6 pb-20 pt-28 md:min-h-[85svh] md:pb-24">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
-            {HOTEL.name} · {branch.city}
+        <div className="relative mx-auto flex min-h-[78svh] max-w-6xl flex-col justify-end px-6 pb-20 pt-28 md:min-h-[90svh] md:pb-24">
+          <Image
+            src={HOTEL.logoPath}
+            alt={HOTEL.name}
+            width={280}
+            height={120}
+            priority
+            className="h-auto w-[min(70vw,240px)] drop-shadow-[0_12px_28px_rgba(0,0,0,0.4)]"
+          />
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
+            {branch.city} · hotel 3 estrellas
           </p>
           <h1 className="mt-3 max-w-2xl font-[family-name:var(--font-display)] text-4xl font-extrabold text-white md:text-6xl">
             {branch.name}
           </h1>
           <p className="mt-4 max-w-md text-lg text-white/90">
-            {branch.tagline}. {branch.fullAddress}.
+            {branch.tagline}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <PhoneCta phone={branch.phoneMobile} label="Llamar a esta sede" />
@@ -108,19 +116,15 @@ export default async function SedePage({
       <section className="mx-auto max-w-6xl px-6 py-14 md:py-16">
         <div className="max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--brand-gold)]">
-            Esta sede
+            Dirección y contacto
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
-            Datos propios del hotel
+            Te esperamos en {branch.city}
           </h2>
-          <p className="mt-4 text-[var(--brand-muted)]">
-            Dirección, teléfonos y fotos son de {branch.city}; no se mezclan con
-            otras sucursales.
-          </p>
-          <p className="mt-4 text-[var(--brand-ink)]">
+          <p className="mt-4 text-lg text-[var(--brand-ink)]">
             {branch.fullAddress}
           </p>
-          <p className="mt-2 text-[var(--brand-ink)]">
+          <p className="mt-3 text-[var(--brand-ink)]">
             <a
               href={`tel:${branch.phoneMobile}`}
               className="font-semibold underline-offset-4 hover:underline"
@@ -139,6 +143,9 @@ export default async function SedePage({
               </>
             ) : null}
           </p>
+          <p className="mt-4 text-sm text-[var(--brand-muted)]">
+            Las reservas de esta sede se confirman solo por teléfono.
+          </p>
         </div>
       </section>
 
@@ -148,13 +155,13 @@ export default async function SedePage({
             Habitaciones · {branch.city}
           </p>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--brand-ink)] md:text-4xl">
-            Tipos de esta sede
+            Nuestras habitaciones
           </h2>
           <p className="mt-3 text-[var(--brand-muted)]">
             {priced.length === 0
-              ? "Aún no hay habitaciones publicadas para esta sede."
+              ? "Aún no hay habitaciones publicadas para esta sede. Llama para consultar."
               : fromPrice != null
-                ? `Desde ${formatMoney(fromPrice)} la noche. Fotos y tarifas propias de ${branch.city}.`
+                ? `Desde ${formatMoney(fromPrice)} la noche. Fotos y tarifas de ${branch.city}.`
                 : null}
           </p>
         </div>
@@ -169,10 +176,17 @@ export default async function SedePage({
                 displayPrice={item.resolved.price}
                 offerLabel={item.resolved.offer?.title}
                 basePriceLabel
+                phone={branch.phoneMobile}
               />
             ))}
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-10 rounded-[1.5rem] border border-[var(--brand-line)] bg-white px-6 py-12 text-center">
+            <p className="text-[var(--brand-muted)]">
+              El catálogo de esta sede se está preparando.
+            </p>
+          </div>
+        )}
 
         <div className="mt-12">
           <PhoneCta phone={branch.phoneMobile} />

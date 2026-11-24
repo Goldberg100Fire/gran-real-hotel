@@ -9,6 +9,8 @@ interface RoomTypeCardProps {
   displayPrice?: number;
   offerLabel?: string | null;
   basePriceLabel?: boolean;
+  /** Teléfono de la sede (si no, usa el principal). */
+  phone?: string;
 }
 
 export function RoomTypeCard({
@@ -17,6 +19,7 @@ export function RoomTypeCard({
   displayPrice,
   offerLabel,
   basePriceLabel = false,
+  phone = HOTEL.phoneMobile,
 }: RoomTypeCardProps) {
   const price = displayPrice ?? roomType.basePrice;
   const showBase =
@@ -91,7 +94,7 @@ export function RoomTypeCard({
         )}
         <div className="mt-auto pt-2">
           <a
-            href={`tel:${HOTEL.phoneMobile}`}
+            href={`tel:${phone}`}
             className="inline-flex w-full items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]"
           >
             Llamar para reservar

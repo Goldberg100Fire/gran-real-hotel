@@ -33,8 +33,12 @@ export default async function HomePage() {
     );
     return { ...item, resolved };
   });
-  const fromPrice = Math.min(...priced.map((item) => item.resolved.price));
+  const fromPrice =
+    priced.length > 0
+      ? Math.min(...priced.map((item) => item.resolved.price))
+      : null;
   const activeOffer = current[0] ?? null;
+  const primaryPhone = primary?.phoneMobile ?? HOTEL.phoneMobile;
 
   return (
     <main>
@@ -51,7 +55,7 @@ export default async function HomePage() {
           <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(24,18,14,0.92)_0%,rgba(44,36,30,0.55)_52%,rgba(24,18,14,0.28)_100%)]" />
         </div>
         <div className="absolute bottom-0 inset-x-0 h-36 bg-gradient-to-t from-[var(--brand-cream)] to-transparent" />
-        <SiteHeader />
+        <SiteHeader phone={primaryPhone} />
 
         <div className="relative mx-auto flex min-h-[100svh] max-w-6xl flex-col justify-end px-6 pb-24 pt-28 md:justify-center md:pb-28">
           <Image
@@ -67,10 +71,7 @@ export default async function HomePage() {
             {primary ? ` en ${primary.city}` : " en Otuzco"}.
           </p>
           <div className="animate-reveal-delay-2 mt-8 flex flex-wrap gap-3">
-            <PhoneCta
-              label="Llamar para reservar"
-              phone={primary?.phoneMobile ?? HOTEL.phoneMobile}
-            />
+            <PhoneCta label="Llamar para reservar" phone={primaryPhone} />
             <Link
               href={primary ? `/sede/${primary.slug}` : "/habitaciones"}
               className="rounded-full border border-white/45 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
@@ -109,35 +110,49 @@ export default async function HomePage() {
             Habitaciones
           </h2>
           <p className="mt-3 text-[var(--brand-muted)]">
-            Simple, matrimonial, doble, familiar y suite, desde{" "}
-            {formatMoney(fromPrice)} la noche
-            {activeOffer ? ` (${activeOffer.title})` : ""}. Cada tipo muestra su
-            foto y servicios. La disponibilidad se confirma por teléfono.
+            {fromPrice != null
+              ? `Simple, matrimonial, doble, familiar y suite, desde ${formatMoney(fromPrice)} la noche${activeOffer ? ` (${activeOffer.title})` : ""}. `
+              : "Pronto publicaremos las habitaciones de esta sede. "}
+            Cada tipo muestra su foto y servicios. La disponibilidad se confirma
+            por teléfono.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {priced.map((item, index) => (
-            <div
-              key={item.roomType.id}
-              className={
-                index % 3 === 1
-                  ? "animate-reveal-delay"
-                  : index % 3 === 2
-                    ? "animate-reveal-delay-2"
-                    : "animate-reveal"
-              }
-            >
-              <RoomTypeCard
-                roomType={item.roomType}
-                services={item.services}
-                displayPrice={item.resolved.price}
-                offerLabel={item.resolved.offer?.title}
-                basePriceLabel
-              />
+        {priced.length > 0 ? (
+          <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {priced.map((item, index) => (
+              <div
+                key={item.roomType.id}
+                className={
+                  index % 3 === 1
+                    ? "animate-reveal-delay"
+                    : index % 3 === 2
+                      ? "animate-reveal-delay-2"
+                      : "animate-reveal"
+                }
+              >
+                <RoomTypeCard
+                  roomType={item.roomType}
+                  services={item.services}
+                  displayPrice={item.resolved.price}
+                  offerLabel={item.resolved.offer?.title}
+                  basePriceLabel
+                  phone={primaryPhone}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-10 rounded-[1.5rem] border border-[var(--brand-line)] bg-white px-6 py-12 text-center">
+            <p className="text-[var(--brand-muted)]">
+              Aún no hay tipos publicados. Llama al hotel para consultar
+              disponibilidad.
+            </p>
+            <div className="mt-6">
+              <PhoneCta phone={primaryPhone} />
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </section>
 
       <OffersSection
@@ -200,8 +215,8 @@ export default async function HomePage() {
               Llama, consulta fechas y confirma tu habitación con el hotel.
             </p>
             <ol className="mt-6 space-y-3 text-sm text-[var(--brand-ink)]">
-              <li>1. Elige el tipo de habitación que te interesa.</li>
-              <li>2. Llama al celular o al teléfono fijo.</li>
+              <li>1. Elige la sede y el tipo de habitación.</li>
+              <li>2. Llama al celular o al teléfono fijo de esa sede.</li>
               <li>3. Confirma fechas, precio y forma de pago.</li>
             </ol>
             <div className="mt-8 flex flex-wrap gap-3">

@@ -145,13 +145,13 @@ export function PublicChat() {
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Escribe tu consulta…"
                 maxLength={400}
-                className="h-10 flex-1 border border-[var(--brand-line)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-gold)]"
+                className="h-10 flex-1 rounded-lg border border-[var(--brand-line)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-gold)]"
                 aria-label="Mensaje"
               />
               <button
                 type="submit"
                 disabled={pending || !input.trim()}
-                className="inline-flex h-10 items-center justify-center bg-[var(--brand-gold)] px-3 text-sm font-bold text-[var(--brand-deep)] transition hover:brightness-110 disabled:opacity-50"
+                className="inline-flex h-10 items-center justify-center rounded-lg bg-[var(--brand-gold)] px-3 text-sm font-bold text-[var(--brand-deep)] transition hover:brightness-110 disabled:opacity-50"
               >
                 Enviar
               </button>
@@ -160,7 +160,7 @@ export function PublicChat() {
               href={`tel:${HOTEL.phoneMobile}`}
               className="block text-center text-xs font-semibold text-[var(--brand-muted)] underline-offset-2 hover:underline"
             >
-              Preferir llamada: {HOTEL.phoneMobile}
+              Llamar: {HOTEL.phoneMobile}
             </a>
             <a
               href="/consultar"

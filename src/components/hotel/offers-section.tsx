@@ -25,11 +25,11 @@ export function OffersSection({
           Ofertas y fiestas
         </p>
         <h2 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-extrabold text-[var(--brand-ink)] md:text-5xl">
-          Promociones visibles
+          Ofertas vigentes
         </h2>
         <p className="mt-3 text-[var(--brand-muted)]">
-          Descuentos por cantidad de noches y paquetes de fiesta con días y
-          costo definidos por el hotel. Confirma al llamar.
+          Descuentos por noches y paquetes de fiesta con días y costo definidos
+          por el hotel. Confirma al llamar.
         </p>
       </div>
 

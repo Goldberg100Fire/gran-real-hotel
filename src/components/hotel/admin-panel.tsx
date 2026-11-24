@@ -910,21 +910,25 @@ export function AdminPanel({
 
   const tabs = (
     [
+      ...(permissions.manageStaff
+        ? ([["sucursales", "Sucursales"] as const] as const)
+        : []),
       ["habitaciones", "Habitaciones"],
       ...(permissions.editPricing
         ? ([
             ["tipos", "Tipos y fotos"],
             ["servicios", "Servicios"],
-            ["ofertas", "Ofertas y fiestas"],
+            ["ofertas", "Ofertas"],
           ] as const)
         : []),
-      ...(permissions.manageStaff
-        ? ([["sucursales", "Sucursales"] as const] as const)
-        : []),
-      ["reservas", "Reservas"],
-      ...(permissions.manageStaff ? [["clientes", "Clientes"] as const] : []),
       ...(permissions.manageStaff ? [["personal", "Personal"] as const] : []),
-      ...(permissions.manageStaff ? [["correos", "Comprobantes"] as const] : []),
+      ...(permissions.manageStaff
+        ? ([
+            ["reservas", "Registro"],
+            ["clientes", "Clientes"],
+            ["correos", "Correos"],
+          ] as const)
+        : [["reservas", "Registro"] as const]),
     ] as const
   );
 
@@ -936,7 +940,7 @@ export function AdminPanel({
             Administración
           </h1>
           <p className="mt-1 text-sm text-[var(--brand-muted)]">
-            Habitaciones, catálogo, personal y reservas
+            Inventario, sedes, catálogo y personal
           </p>
         </div>
         <p className="text-sm text-[var(--brand-muted)] sm:text-right">
@@ -1234,7 +1238,9 @@ export function AdminPanel({
 
                 {floors.length === 0 ? (
                   <div className="rounded-xl border border-[var(--brand-line)] bg-white px-4 py-10 text-center text-sm text-[var(--brand-muted)]">
-                    No hay habitaciones con ese filtro.
+                    {branchRooms.length === 0
+                      ? `Aún no hay habitaciones en ${activeBranch?.city ?? "esta sede"}. Agrégalas arriba o crea tipos primero.`
+                      : "Ninguna habitación coincide con el filtro. Prueba Limpiar."}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1632,10 +1638,17 @@ export function AdminPanel({
                 })}
               </div>
             </div>
-            <Button type="submit" className="rounded-full">
+            <Button type="submit" className="rounded-lg bg-[var(--brand-deep)]">
               Crear tipo
             </Button>
           </form>
+
+          {branchTypes.length === 0 && (
+            <p className="rounded-xl border border-[var(--brand-line)] bg-white px-5 py-8 text-center text-sm text-[var(--brand-muted)]">
+              Aún no hay tipos en {activeBranch?.city ?? "esta sede"}. Crea el
+              primero con su foto propia.
+            </p>
+          )}
 
           <div className="grid gap-6">
             {branchTypes.map((type) => (
@@ -1730,7 +1743,7 @@ export function AdminPanel({
                         la pública.
                       </p>
                     </div>
-                    <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--brand-deep)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
+                    <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-[var(--brand-deep)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-ink)]">
                       Agregar foto
                       <input
                         type="file"
@@ -1874,7 +1887,7 @@ export function AdminPanel({
                 placeholder="Seguridad para valores"
               />
             </div>
-            <Button type="submit" className="rounded-full">
+            <Button type="submit" className="rounded-lg">
               Agregar
             </Button>
           </form>
@@ -1911,7 +1924,7 @@ export function AdminPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="rounded-full"
+                    className="rounded-lg"
                     onClick={() =>
                       removeService(service.id).catch((err) =>
                         setError(err.message),
@@ -2744,7 +2757,7 @@ export function AdminPanel({
             <div className="flex items-end">
               <Button
                 type="submit"
-                className="w-full rounded-full bg-[var(--brand-deep)]"
+                className="w-full rounded-lg bg-[var(--brand-deep)]"
               >
                 Autorizar correo
               </Button>
@@ -2800,7 +2813,7 @@ export function AdminPanel({
                             <Button
                               type="button"
                               variant="outline"
-                              className="rounded-full"
+                              className="rounded-lg"
                               onClick={() =>
                                 authorizeStaffReset(member.email).catch(
                                   (err) => setError(err.message),
@@ -2813,7 +2826,7 @@ export function AdminPanel({
                         <Button
                           type="button"
                           variant="outline"
-                          className="rounded-full"
+                          className="rounded-lg"
                           onClick={() =>
                             toggleStaff(member.email, !member.active)
                           }

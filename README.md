@@ -8,8 +8,9 @@ Sitio informativo de **Gran Real Hotel** (Otuzco, La Libertad): habitaciones, co
 
 - Página pública con logo, fotos y datos del hotel
 - Habitaciones Simple, Matrimonial, Doble, Familiar y Suite (foto y servicios por tipo)
+- Varias **sedes** con dirección, teléfonos y fotos propias (`/sede/[ciudad]`)
 - Botón flotante **Consultar** para preguntas sin iniciar sesión
-- Reservas por llamada: Cel. 978113578 · Telf. 044 727074
+- Reservas por llamada (cada sede tiene su número)
 - Panel interno en `/personal` con **correo y contraseña** (sin registro público)
 - El **jefe** autoriza correos de empleados; cada uno crea su contraseña; solo el jefe recupera solo; empleados necesitan su OK
 - El **jefe** crea/edita tipos, **sube fotos** por habitación, servicios y ofertas/fiestas
