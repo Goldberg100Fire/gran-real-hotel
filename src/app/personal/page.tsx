@@ -19,6 +19,7 @@ export default async function PersonalAccessPage({
   const user = await getSessionUser();
   const nextPath = safeStaffNext(params.next);
   const inviteToken = params.invite?.trim() || "";
+  const sessionExpired = params.error === "session";
 
   if (user && isStaffRole(user.role)) {
     redirect(nextPath);
@@ -76,6 +77,12 @@ export default async function PersonalAccessPage({
             </div>
 
             <div className="px-7 py-6 sm:px-8 sm:py-7">
+              {sessionExpired ? (
+                <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
+                  La sesión se cerró por inactividad o venció. Vuelve a iniciar
+                  sesión.
+                </p>
+              ) : null}
               <StaffAuthForm
                 nextPath={nextPath}
                 compact

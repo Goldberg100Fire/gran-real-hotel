@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminPanel } from "@/components/hotel/admin-panel";
 import { LogoutButton } from "@/components/hotel/logout-button";
+import { SessionGuard } from "@/components/hotel/session-guard";
 import { getSessionUser, isStaffRole } from "@/lib/auth";
 import { HOTEL } from "@/lib/hotel-info";
 import { USER_ROLE_LABELS } from "@/lib/types";
@@ -23,6 +24,7 @@ export default async function AdminPage() {
 
   return (
     <main className="min-h-[100svh] bg-[#efe9e2]">
+      <SessionGuard idleMinutes={30} />
       <header className="sticky top-0 z-30 border-b border-[var(--brand-line)] bg-[#f7f3ef]/95 backdrop-blur-md">
         <div className="mx-auto flex h-[4.25rem] max-w-6xl items-center justify-between gap-4 px-5 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">

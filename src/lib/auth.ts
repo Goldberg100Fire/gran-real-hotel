@@ -3,7 +3,8 @@ import { createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import type { StaffMember, StaffRole, UserRole } from "@/lib/types";
 
 const COOKIE_NAME = "hotel_user_session";
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+/** Sesión del panel: máximo 8 horas (antes eran 7 días). */
+const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 
 export type SessionUser = {
   email: string;
