@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth";
 import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
 import {
+  isResendConfigured,
+  isSmtpConfigured,
+  sendEmail,
+} from "@/lib/mail";
+import {
   buildMailFrom,
   createResendDomain,
   getResendDomain,
@@ -18,6 +23,7 @@ export async function GET() {
   }
 
   try {
+    const smtpUser = process.env.SMTP_USER?.trim() || null;
     const [settings, domains] = await Promise.all([
       getMailSettings(),
       listResendDomains().catch(() => [] as Awaited<ReturnType<typeof listResendDomains>>),
@@ -54,7 +60,16 @@ export async function GET() {
       domains,
       active,
       envFrom: process.env.MAIL_FROM || null,
-      configured: Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM),
+      smtp: {
+        configured: isSmtpConfigured(),
+        user: smtpUser,
+        host: process.env.SMTP_HOST?.trim() || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT || 587),
+      },
+      resend: {
+        configured: isResendConfigured(),
+      },
+      configured: isSmtpConfigured() || isResendConfigured(),
     });
   } catch (error) {
     const message =
@@ -79,6 +94,25 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const action = String(body.action ?? "create");
+
+    if (action === "test") {
+      const to =
+        String(body.to ?? "").trim().toLowerCase() || owner.email;
+      if (!to.includes("@")) {
+        return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
+      }
+      const result = await sendEmail({
+        to,
+        subject: `Prueba de correo · Gran Real Hotel`,
+        text: `Prueba OK. Si lees esto, SMTP/Gmail ya puede enviar invitaciones a empleados.\nModo: ${isSmtpConfigured() ? "smtp" : "resend"}`,
+        html: `<p>Prueba OK. Si lees esto, el hotel ya puede enviar invitaciones.</p><p>Destino: <strong>${to}</strong></p>`,
+      });
+      return NextResponse.json({
+        ok: true,
+        mode: result.mode,
+        message: `Listo: correo de prueba enviado a ${to} (${result.mode}).`,
+      });
+    }
 
     if (action === "create") {
       const domain = await createResendDomain(String(body.domain ?? ""));

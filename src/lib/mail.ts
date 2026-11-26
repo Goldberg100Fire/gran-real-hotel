@@ -31,6 +31,15 @@ export function isSmtpConfigured(): boolean {
   );
 }
 
+function smtpCredentials() {
+  const user = process.env.SMTP_USER?.trim() || "";
+  // Las claves de aplicación de Google a veces se pegan con espacios.
+  const pass = (process.env.SMTP_PASS || "").replace(/\s+/g, "");
+  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 587);
+  return { user, pass, host, port };
+}
+
 export function isResendConfigured(): boolean {
   return Boolean(
     process.env.RESEND_API_KEY?.trim() && process.env.MAIL_FROM?.trim(),
@@ -92,10 +101,10 @@ async function sendWithSmtp(input: {
   text: string;
   from: string;
 }): Promise<SendMailResult> {
-  const user = process.env.SMTP_USER!.trim();
-  const pass = process.env.SMTP_PASS!.trim();
-  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
-  const port = Number(process.env.SMTP_PORT || 465);
+  const { user, pass, host, port } = smtpCredentials();
+  if (!user || !pass) {
+    throw new Error("Faltan SMTP_USER o SMTP_PASS");
+  }
   // Gmail exige que el remitente sea la cuenta autenticada (no onboarding@resend.dev).
   const from = input.from.includes(user)
     ? input.from
@@ -105,32 +114,47 @@ async function sendWithSmtp(input: {
     host,
     port,
     secure: port === 465,
+    requireTLS: port === 587,
     auth: { user, pass },
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 20_000,
   });
 
-  const info = await transporter.sendMail({
-    from,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  });
-
-  const messageId = info.messageId || `smtp-${Date.now()}`;
   try {
-    await persistOutbox({
+    const info = await transporter.sendMail({
+      from,
       to: input.to,
       subject: input.subject,
-      html: input.html,
       text: input.text,
-      mode: "smtp",
-      delivered: true,
+      html: input.html,
     });
-  } catch (error) {
-    console.error("No se pudo guardar el correo en el outbox:", error);
-  }
 
-  return { delivered: true, mode: "smtp", messageId };
+    const messageId = info.messageId || `smtp-${Date.now()}`;
+    try {
+      await persistOutbox({
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
+        mode: "smtp",
+        delivered: true,
+      });
+    } catch (error) {
+      console.error("No se pudo guardar el correo en el outbox:", error);
+    }
+
+    return { delivered: true, mode: "smtp", messageId };
+  } catch (error) {
+    console.error("SMTP send failed:", {
+      host,
+      port,
+      user,
+      to: input.to,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 async function sendWithResend(input: {
@@ -204,8 +228,15 @@ export async function sendEmail(input: {
     }
   }
 
+  // Sin SMTP: Resend solo sirve si hay dominio verificado.
   if (isResendConfigured()) {
-    return sendWithResend({ ...input, from });
+    try {
+      return await sendWithResend({ ...input, from });
+    } catch (error) {
+      throw new Error(
+        `${humanizeMailError(error)} Tip: configura SMTP_USER/SMTP_PASS (Gmail) para enviar sin dominio.`,
+      );
+    }
   }
 
   throw new Error(

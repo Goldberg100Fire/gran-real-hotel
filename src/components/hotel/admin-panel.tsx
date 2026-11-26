@@ -165,6 +165,10 @@ export function AdminPanel({
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [mailDomainInput, setMailDomainInput] = useState("");
   const [mailDomainBusy, setMailDomainBusy] = useState(false);
+  const [mailStatus, setMailStatus] = useState<{
+    smtp?: { configured?: boolean; user?: string | null };
+    resend?: { configured?: boolean };
+  } | null>(null);
   const [mailDomainDetail, setMailDomainDetail] = useState<{
     id: string;
     name: string;
@@ -290,6 +294,10 @@ export function AdminPanel({
         const response = await fetch("/api/admin/mail-domain");
         const data = await response.json();
         if (!response.ok) return;
+        setMailStatus({
+          smtp: data.smtp,
+          resend: data.resend,
+        });
         if (data.active) {
           setMailDomainDetail(data.active);
           setMailDomainInput(data.active.name || "");
@@ -632,8 +640,13 @@ export function AdminPanel({
       );
     } else {
       notifyWarn(
-        data.message ||
-          "Personal autorizado. El correo no salió; copia el enlace de abajo.",
+        [
+          data.message ||
+            "Personal autorizado. El correo no salió; copia el enlace de abajo.",
+          data.inviteError ? `Detalle: ${data.inviteError}` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
     setStaffEmail("");
@@ -698,8 +711,13 @@ export function AdminPanel({
       notifyOk(data.message || `Listo: enlace reenviado a ${email}`);
     } else {
       notifyWarn(
-        data.message ||
-          "El correo no salió. Copia el enlace de abajo y envíaselo.",
+        [
+          data.message ||
+            "El correo no salió. Copia el enlace de abajo y envíaselo.",
+          data.inviteError ? `Detalle: ${data.inviteError}` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
     await loadSummary();
@@ -1241,6 +1259,25 @@ export function AdminPanel({
       }
       setMailDomainDetail(data.domain);
       notifyOk(data.message || "Estado actualizado");
+      await loadSummary();
+    } finally {
+      setMailDomainBusy(false);
+    }
+  }
+
+  async function sendTestMail() {
+    setMailDomainBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/mail-domain", {
+        method: "POST",
+        body: JSON.stringify({ action: "test", to: adminEmail }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        notifyErr(data.error || "No se pudo enviar la prueba");
+        return;
+      }
+      notifyOk(data.message || "Correo de prueba enviado");
       await loadSummary();
     } finally {
       setMailDomainBusy(false);
@@ -3153,9 +3190,8 @@ export function AdminPanel({
       {tab === "personal" && permissions.manageStaff && (
         <div className="space-y-6">
           <p className="text-sm text-[var(--brand-muted)]">
-            Al autorizar se envía un enlace al correo para que cree su
-            contraseña. Si Resend aún no tiene dominio verificado, el correo no
-            llegará: copia el enlace del aviso y envíaselo (WhatsApp).
+            Al autorizar se envía un enlace al correo (Gmail SMTP) para crear la
+            contraseña. Si falla el envío, verás el enlace aquí para copiarlo.
           </p>
           {(snapshot.ownersFromSecrets ?? []).length > 0 && (
             <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
@@ -3423,6 +3459,33 @@ export function AdminPanel({
                 El dominio Resend abajo es opcional (solo si más adelante quieres
                 correo con marca propia).
               </p>
+            </div>
+
+            <div className="rounded-xl border border-[var(--brand-line)] bg-[var(--brand-mist)]/60 px-4 py-3 text-sm">
+              <p>
+                Gmail SMTP:{" "}
+                <strong>
+                  {mailStatus?.smtp?.configured ? "configurado" : "faltan secretos"}
+                </strong>
+                {mailStatus?.smtp?.user ? ` · ${mailStatus.smtp.user}` : ""}
+              </p>
+              <p className="mt-1">
+                Resend:{" "}
+                <strong>
+                  {mailStatus?.resend?.configured
+                    ? "configurado (solo con dominio)"
+                    : "no"}
+                </strong>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 rounded-lg"
+                disabled={mailDomainBusy}
+                onClick={() => sendTestMail()}
+              >
+                Enviar correo de prueba a mi cuenta
+              </Button>
             </div>
 
             {(snapshot.mailSettings || mailDomainDetail) && (
