@@ -15,18 +15,23 @@ function renderMessageText(text: string) {
   const parts = text.split(/(https?:\/\/[^\s]+)/g);
   return parts.map((part, index) => {
     if (/^https?:\/\//.test(part)) {
+      // Evita que un punto/coma del mensaje se pegue al href (rompe maps.app.goo.gl).
+      const trailing = part.match(/[.,;:!?)]+$/)?.[0] ?? "";
+      const href = trailing ? part.slice(0, -trailing.length) : part;
       return (
-        <a
-          key={`${part}-${index}`}
-          href={part}
-          target="_blank"
-          rel="noreferrer"
-          className="font-semibold underline underline-offset-2 break-all"
-        >
-          {part.includes("maps.app.goo.gl") || part.includes("google.com/maps")
-            ? "Ver en Google Maps"
-            : part}
-        </a>
+        <span key={`${part}-${index}`}>
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline underline-offset-2 break-all"
+          >
+            {href.includes("maps.app.goo.gl") || href.includes("google.com/maps")
+              ? "Ver en Google Maps"
+              : href}
+          </a>
+          {trailing}
+        </span>
       );
     }
     return <span key={`t-${index}`}>{part}</span>;

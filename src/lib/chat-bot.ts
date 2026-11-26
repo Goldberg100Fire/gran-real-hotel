@@ -358,7 +358,7 @@ export function answerHotelQuestion(
 
   if (includesAny(message, ["gracias", "chao", "adios", "hasta luego", "ok gracias"])) {
     return {
-      reply: `¡Con gusto! Si quieres reservar, llama al ${phoneMobile}. Ubicación: ${HOTEL.mapsUrl}. Que tengas un buen día.`,
+      reply: `¡Con gusto! Si quieres reservar, llama al ${phoneMobile}. ${mapsLine()}. Que tengas un buen día.`,
       suggestions: ["Reservar", "Ubicación"],
     };
   }
