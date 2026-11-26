@@ -9,7 +9,29 @@ type ChatMessage = {
   text: string;
 };
 
-const WELCOME_TEXT = `Hola, soy el asistente de ${HOTEL.name}. Pregúntame por habitaciones, precios o cómo reservar.`;
+const WELCOME_TEXT = `Hola, soy el asistente de ${HOTEL.name} en ${HOTEL.city}. Pregúntame por ubicación, habitaciones, precios, ofertas o cómo reservar por teléfono.`;
+
+function renderMessageText(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, index) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a
+          key={`${part}-${index}`}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="font-semibold underline underline-offset-2 break-all"
+        >
+          {part.includes("maps.app.goo.gl") || part.includes("google.com/maps")
+            ? "Ver en Google Maps"
+            : part}
+        </a>
+      );
+    }
+    return <span key={`t-${index}`}>{part}</span>;
+  });
+}
 
 export function PublicChat() {
   const [open, setOpen] = useState(false);
@@ -17,9 +39,9 @@ export function PublicChat() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState([
+    "¿Dónde quedan?",
     "¿Cómo reservo?",
     "Precios",
-    "Ofertas",
     "Habitaciones",
   ]);
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -116,7 +138,9 @@ export function PublicChat() {
                     : "mr-8 rounded-2xl rounded-bl-md bg-white px-3.5 py-2.5 text-sm text-[var(--brand-ink)] shadow-sm ring-1 ring-[var(--brand-line)]"
                 }
               >
-                {message.text}
+                {message.role === "bot"
+                  ? renderMessageText(message.text)
+                  : message.text}
               </div>
             ))}
             {pending && (
@@ -143,7 +167,7 @@ export function PublicChat() {
               <input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="Escribe tu consulta…"
+                placeholder="Ej. ¿dónde quedan? ¿cuánto cuesta?"
                 maxLength={400}
                 className="h-10 flex-1 rounded-lg border border-[var(--brand-line)] bg-white px-3 text-sm outline-none focus:border-[var(--brand-gold)]"
                 aria-label="Mensaje"
@@ -156,18 +180,28 @@ export function PublicChat() {
                 Enviar
               </button>
             </form>
-            <a
-              href={`tel:${HOTEL.phoneMobile}`}
-              className="block text-center text-xs font-semibold text-[var(--brand-muted)] underline-offset-2 hover:underline"
-            >
-              Llamar: {HOTEL.phoneMobile}
-            </a>
-            <a
-              href="/consultar"
-              className="block text-center text-xs text-[var(--brand-muted)] underline-offset-2 hover:underline"
-            >
-              Abrir consultas en página completa
-            </a>
+            <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-center text-xs">
+              <a
+                href={`tel:${HOTEL.phoneMobile}`}
+                className="font-semibold text-[var(--brand-muted)] underline-offset-2 hover:underline"
+              >
+                Llamar {HOTEL.phoneMobile}
+              </a>
+              <a
+                href={HOTEL.mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-semibold text-[var(--brand-muted)] underline-offset-2 hover:underline"
+              >
+                Ver mapa
+              </a>
+              <a
+                href="/consultar"
+                className="text-[var(--brand-muted)] underline-offset-2 hover:underline"
+              >
+                Página completa
+              </a>
+            </div>
           </div>
         </section>
       ) : null}

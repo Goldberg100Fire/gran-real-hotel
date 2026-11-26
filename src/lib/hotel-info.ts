@@ -9,6 +9,8 @@ export const HOTEL = {
   fullAddress: "Calle Tacna Nº 542 · Otuzco · La Libertad",
   phoneMobile: "978113578",
   phoneLandline: "044 727074",
+  /** Ubicación pública en Google Maps (sede Otuzco). */
+  mapsUrl: "https://maps.app.goo.gl/y1rgn6WHbFSG48x76",
   logoPath: "/hotel/logo.png",
 } as const;
 

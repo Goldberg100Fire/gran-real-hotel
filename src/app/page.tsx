@@ -273,6 +273,16 @@ export default async function HomePage() {
               </>
             )}
           </p>
+          <p className="mt-4">
+            <a
+              href={HOTEL.mapsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center rounded-full border border-[var(--brand-line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--brand-ink)] transition hover:border-[var(--brand-gold)]"
+            >
+              Ver ubicación en Google Maps
+            </a>
+          </p>
           <p className="mt-6 max-w-lg text-sm text-[var(--brand-muted)]">
             También puedes usar el botón <strong>Consultar</strong> en la
             esquina para preguntar por precios, habitaciones o ubicación sin

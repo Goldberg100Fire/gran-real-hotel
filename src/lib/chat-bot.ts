@@ -74,6 +74,10 @@ function offerSummary(offers: PriceOffer[], roomTypes: RoomType[]): string {
     .join(" · ");
 }
 
+function mapsLine(): string {
+  return `Ubicación en Google Maps: ${HOTEL.mapsUrl}`;
+}
+
 /**
  * Bot de consultas públicas del hotel (sin login).
  */
@@ -90,18 +94,64 @@ export function answerHotelQuestion(
   const phoneLandline = branch?.phoneLandline || HOTEL.phoneLandline;
   const fullAddress = branch?.fullAddress ?? HOTEL.fullAddress;
   const { current, upcoming } = listPublicOffers(priceOffers, todayInLima());
+  const phones = `Cel. ${phoneMobile}${phoneLandline ? ` · Fijo ${phoneLandline}` : ""}`;
 
   if (!message) {
     return {
-      reply: `Hola, soy el asistente de ${HOTEL.name}. Puedo ayudarte con habitaciones, precios, fiestas o cómo reservar.`,
-      suggestions: ["¿Cómo reservo?", "Precios", "Ofertas", "Ubicación"],
+      reply: `Hola, soy el asistente de ${HOTEL.name} en ${city}. Puedo ayudarte con ubicación, habitaciones, precios, ofertas, cómo llegar y cómo reservar por teléfono.`,
+      suggestions: [
+        "¿Dónde quedan?",
+        "¿Cómo reservo?",
+        "Precios",
+        "Habitaciones",
+      ],
     };
   }
 
-  if (includesAny(message, ["hola", "buenas", "buen dia", "buenos dias", "hey"])) {
+  if (
+    includesAny(message, [
+      "hola",
+      "buenas",
+      "buen dia",
+      "buenos dias",
+      "buenas tardes",
+      "buenas noches",
+      "hey",
+      "saludos",
+    ])
+  ) {
     return {
-      reply: `¡Hola! Bienvenido a ${HOTEL.name} en ${city}. ¿En qué te ayudo?`,
-      suggestions: ["Reservar", "Habitaciones", "Precios", "Ofertas"],
+      reply: `¡Hola! Bienvenido a ${HOTEL.name} (${HOTEL.stars}★) en ${city}. Pregúntame por ubicación, precios, habitaciones u ofertas. Las reservas se confirman solo por teléfono (${phoneMobile}).`,
+      suggestions: ["Ubicación", "Reservar", "Precios", "Ofertas"],
+    };
+  }
+
+  if (
+    includesAny(message, [
+      "donde",
+      "ubicacion",
+      "direccion",
+      "otuzco",
+      "llegar",
+      "mapa",
+      "maps",
+      "google",
+      "como llego",
+      "address",
+      "sede",
+      "local",
+    ])
+  ) {
+    return {
+      reply: `Estamos en ${fullAddress}, ${branch?.country ?? HOTEL.country}. ${mapsLine()}. Si vienes de Trujillo u otra ciudad, llega a Otuzco y busca Calle Tacna Nº 542. ¿Necesitas el teléfono para preguntar cómo llegar?`,
+      suggestions: ["Abrir mapa", "Teléfono", "Reservar", "Precios"],
+    };
+  }
+
+  if (includesAny(message, ["abrir mapa", "ver mapa", "link mapa", "enlace mapa"])) {
+    return {
+      reply: `Aquí tienes la ubicación: ${HOTEL.mapsUrl}`,
+      suggestions: ["Reservar", "Precios", "Habitaciones"],
     };
   }
 
@@ -115,11 +165,12 @@ export function answerHotelQuestion(
       "celular",
       "whatsapp",
       "contacto",
+      "numero",
     ])
   ) {
     return {
-      reply: `Las reservas se hacen solo por teléfono. Llama al celular ${phoneMobile}${phoneLandline ? ` o al fijo ${phoneLandline}` : ""}. Te confirmamos disponibilidad y tarifa según las fechas.`,
-      suggestions: ["Precios", "Ofertas", "Habitaciones"],
+      reply: `Las reservas se hacen solo por teléfono (no hay reservas online). Llama al ${phones}. Al llamar ten a mano: fechas de ingreso y salida, cantidad de personas y tipo de habitación. Te confirmamos disponibilidad y el precio final.`,
+      suggestions: ["Precios", "Habitaciones", "Ubicación", "Ofertas"],
     };
   }
 
@@ -134,26 +185,30 @@ export function answerHotelQuestion(
       "año nuevo",
       "ano nuevo",
       "patronal",
+      "descuento",
+      "paquete",
     ])
   ) {
     return {
-      reply: `Temporadas y fiestas: ${offerSummary([...current, ...upcoming], roomTypes)}`,
+      reply: `Temporadas, ofertas y fiestas publicadas: ${offerSummary([...current, ...upcoming], roomTypes)}. Si no ves una oferta para tus fechas, aplica la tarifa habitual y te confirmamos al llamar.`,
       suggestions: ["Precios", "Reservar", "Habitaciones"],
     };
   }
 
-  if (includesAny(message, ["precio", "cuesta", "tarifa", "cuanto", "costo", "soles"])) {
+  if (
+    includesAny(message, ["precio", "cuesta", "tarifa", "cuanto", "costo", "soles", "barato"])
+  ) {
     const habitual =
       roomTypes.length > 0
         ? `Tarifas habituales por noche: ${priceLines(roomTypes)}.`
         : "Consulta tarifas al llamar.";
     const special =
       current.length || upcoming.length
-        ? ` Temporadas: ${offerSummary([...current, ...upcoming], roomTypes)}`
+        ? ` Temporadas vigentes: ${offerSummary([...current, ...upcoming], roomTypes)}.`
         : "";
     return {
-      reply: `${habitual}${special} El precio final se confirma al llamar.`,
-      suggestions: ["Ofertas", "Reservar", "Habitaciones"],
+      reply: `${habitual}${special} El precio final depende de fechas y tipo de habitación; se confirma al llamar al ${phoneMobile}.`,
+      suggestions: ["Ofertas", "Reservar", "Habitaciones", "Ubicación"],
     };
   }
 
@@ -168,6 +223,9 @@ export function answerHotelQuestion(
       "cama",
       "tipos",
       "foto",
+      "capacidad",
+      "persona",
+      "huesped",
     ])
   ) {
     const services = context?.services ?? [];
@@ -179,30 +237,13 @@ export function answerHotelQuestion(
                 .filter((service) => type.serviceIds.includes(service.id))
                 .map((service) => service.name)
                 .join(", ");
-              return `${type.name}: ${type.description} (${formatMoney(type.basePrice)}/noche${extras ? `; servicios: ${extras}` : ""})`;
+              return `${type.name}: ${type.description} · hasta ${type.maxGuests} personas · ${formatMoney(type.basePrice)}/noche${extras ? ` · incluye: ${extras}` : ""}`;
             })
-            .join(" ")
+            .join(" | ")
         : "Tenemos Simple, Matrimonial, Doble, Familiar y Suite Matrimonial.";
     return {
-      reply: `${detail} En la web también verás la foto de cada tipo.`,
-      suggestions: ["Precios", "Reservar", "Servicios"],
-    };
-  }
-
-  if (
-    includesAny(message, [
-      "donde",
-      "ubicacion",
-      "direccion",
-      "otuzco",
-      "llegar",
-      "mapa",
-      "address",
-    ])
-  ) {
-    return {
-      reply: `Estamos en ${fullAddress}, ${branch?.country ?? HOTEL.country}.`,
-      suggestions: ["Reservar", "Precios", "Habitaciones"],
+      reply: `${detail}. En la web verás la foto de cada tipo. Para confirmar disponibilidad llama al ${phoneMobile}.`,
+      suggestions: ["Precios", "Reservar", "Servicios", "Ubicación"],
     };
   }
 
@@ -211,18 +252,42 @@ export function answerHotelQuestion(
       "servicio",
       "wifi",
       "wi fi",
+      "internet",
       "bano",
       "agua",
       "tv",
       "incluye",
       "toalla",
       "armario",
+      "estacionamiento",
+      "parqueo",
+      "desayuno",
+      "mascota",
+      "pet",
     ])
   ) {
     const services = context?.services ?? [];
+    if (includesAny(message, ["estacionamiento", "parqueo"])) {
+      return {
+        reply: `Sobre estacionamiento o parqueo, consulta al llamar al ${phoneMobile}: depende de la sede y la ocupación del día.`,
+        suggestions: ["Reservar", "Ubicación", "Habitaciones"],
+      };
+    }
+    if (includesAny(message, ["desayuno"])) {
+      return {
+        reply: `El desayuno no se publica como servicio fijo en la web. Pregunta al reservar por teléfono (${phoneMobile}) si hay opciones cerca o convenios.`,
+        suggestions: ["Reservar", "Servicios", "Ubicación"],
+      };
+    }
+    if (includesAny(message, ["mascota", "pet"])) {
+      return {
+        reply: `La política de mascotas se confirma por teléfono según la habitación y la sede. Llama al ${phoneMobile} antes de viajar.`,
+        suggestions: ["Reservar", "Habitaciones"],
+      };
+    }
     const catalog =
       services.length > 0
-        ? `Catálogo de servicios: ${services.map((s) => s.name).join(", ")}.`
+        ? `Servicios del hotel: ${services.map((s) => s.name).join(", ")}.`
         : "Baño privado, agua caliente, TV cable y Wi‑Fi son la base.";
     return {
       reply: `${catalog} Cada tipo de habitación puede incluir un conjunto distinto; revísalo en Habitaciones o al llamar.`,
@@ -230,30 +295,82 @@ export function answerHotelQuestion(
     };
   }
 
-  if (includesAny(message, ["horario", "check in", "checkin", "check out", "checkout", "hora"])) {
+  if (
+    includesAny(message, [
+      "horario",
+      "check in",
+      "checkin",
+      "check out",
+      "checkout",
+      "hora",
+      "llegada",
+      "salida",
+    ])
+  ) {
     return {
-      reply:
-        "El horario de ingreso y salida se confirma al reservar por teléfono. Llámanos y te indicamos según tu fecha.",
-      suggestions: ["Reservar", "Teléfono"],
+      reply: `El horario de ingreso (check-in) y salida (check-out) se confirma al reservar por teléfono, según la fecha y la ocupación. Llama al ${phoneMobile} y te indicamos la hora exacta.`,
+      suggestions: ["Reservar", "Teléfono", "Ubicación"],
     };
   }
 
-  if (includesAny(message, ["pago", "yape", "efectivo", "tarjeta", "cip", "transferencia"])) {
+  if (
+    includesAny(message, [
+      "pago",
+      "yape",
+      "efectivo",
+      "tarjeta",
+      "cip",
+      "transferencia",
+      "adelanto",
+      "señal",
+      "senal",
+    ])
+  ) {
     return {
-      reply:
-        "Las formas de pago se acuerdan al confirmar la reserva por teléfono. No hay reservas ni pagos online en esta página.",
-      suggestions: ["Reservar", "Precios"],
+      reply: `Las formas de pago (efectivo, Yape, transferencia u otras) se acuerdan al confirmar la reserva por teléfono. No hay pagos ni reservas online en esta página. Contacto: ${phones}.`,
+      suggestions: ["Reservar", "Precios", "Ubicación"],
     };
   }
 
-  if (includesAny(message, ["gracias", "chao", "adios", "hasta luego"])) {
+  if (
+    includesAny(message, [
+      "estrellas",
+      "categoria",
+      "hotel",
+      "que es",
+      "quienes son",
+      "acerca",
+      "sobre",
+    ])
+  ) {
     return {
-      reply: `¡Con gusto! Si quieres reservar, llama al ${phoneMobile}. Que tengas un buen día.`,
+      reply: `${HOTEL.name} es un hotel de ${HOTEL.stars} estrellas en ${city}, ${HOTEL.region}. ${HOTEL.tagline}. Dirección: ${fullAddress}. ${mapsLine()}. Reservas solo por teléfono: ${phoneMobile}.`,
+      suggestions: ["Habitaciones", "Precios", "Ubicación", "Reservar"],
+    };
+  }
+
+  if (includesAny(message, ["nino", "niño", "bebes", "bebe", "familia", "menores"])) {
+    return {
+      reply: `Recibimos familias. La capacidad depende del tipo (Familiar u otras). Al llamar indica cuántos adultos y niños viajan para recomendarte la habitación adecuada. Tel: ${phoneMobile}.`,
+      suggestions: ["Habitaciones", "Precios", "Reservar"],
+    };
+  }
+
+  if (includesAny(message, ["gracias", "chao", "adios", "hasta luego", "ok gracias"])) {
+    return {
+      reply: `¡Con gusto! Si quieres reservar, llama al ${phoneMobile}. Ubicación: ${HOTEL.mapsUrl}. Que tengas un buen día.`,
+      suggestions: ["Reservar", "Ubicación"],
     };
   }
 
   return {
-    reply: `Puedo ayudarte con habitaciones, precios, fiestas y reservas por teléfono (${phoneMobile}). ¿Qué te gustaría saber?`,
-    suggestions: ["¿Cómo reservo?", "Precios", "Ofertas", "Habitaciones"],
+    reply: `Puedo ayudarte con: ubicación y mapa, habitaciones y fotos, precios, ofertas/fiestas, servicios, horarios y cómo reservar por teléfono (${phoneMobile}). ¿Qué te gustaría saber?`,
+    suggestions: [
+      "¿Dónde quedan?",
+      "¿Cómo reservo?",
+      "Precios",
+      "Habitaciones",
+      "Ofertas",
+    ],
   };
 }
