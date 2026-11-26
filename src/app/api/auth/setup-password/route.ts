@@ -13,8 +13,10 @@ import { validatePasswordStrength } from "@/lib/passwords";
 import { checkRateLimit, clientKey } from "@/lib/rate-limit";
 import {
   consumeLoginCode,
+  consumeStaffInviteToken,
   getAuthorizedStaff,
   isStaffResetAuthorized,
+  peekStaffInviteToken,
   saveLoginCode,
   setStaffPassword,
 } from "@/lib/store";
@@ -23,14 +25,13 @@ const UNIFORM_REQUEST_MESSAGE =
   "Si tu correo está autorizado y puedes crear o restablecer la contraseña, te enviamos un código. Revisa tu bandeja.";
 
 /**
- * Primer acceso o reset autorizado: siempre exige código OTP al correo.
- * action: "request" | "confirm"
+ * Primer acceso o reset autorizado.
+ * action: "request" | "confirm" | "peek-invite" | "confirm-invite"
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const action = String(body.action ?? "confirm");
-    const email = normalizeEmail(String(body.email ?? ""));
 
     const ipLimit = checkRateLimit(
       clientKey(request, "staff-setup"),
@@ -44,6 +45,95 @@ export async function POST(request: Request) {
       );
     }
 
+    if (action === "peek-invite") {
+      const token = String(body.token ?? "").trim();
+      const peeked = await peekStaffInviteToken(token);
+      if (!peeked) {
+        return NextResponse.json(
+          { error: "El enlace no es válido o ya venció. Pide una nueva invitación." },
+          { status: 400 },
+        );
+      }
+      const member = await getAuthorizedStaff(peeked.email);
+      if (!member || member.passwordHash) {
+        return NextResponse.json(
+          {
+            error: member?.passwordHash
+              ? "Esta cuenta ya tiene contraseña. Inicia sesión normalmente."
+              : "El enlace no es válido.",
+          },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        email: peeked.email,
+        name: member.name,
+        expiresAt: peeked.expiresAt,
+      });
+    }
+
+    if (action === "confirm-invite") {
+      const token = String(body.token ?? "").trim();
+      const password = String(body.password ?? "");
+      const confirm = String(body.confirm ?? "");
+
+      if (!token || !password) {
+        return NextResponse.json(
+          { error: "Enlace y contraseña son obligatorios" },
+          { status: 400 },
+        );
+      }
+      if (password !== confirm) {
+        return NextResponse.json(
+          { error: "Las contraseñas no coinciden" },
+          { status: 400 },
+        );
+      }
+      const strength = validatePasswordStrength(password);
+      if (strength) {
+        return NextResponse.json({ error: strength }, { status: 400 });
+      }
+
+      const email = await consumeStaffInviteToken(token);
+      if (!email) {
+        return NextResponse.json(
+          { error: "El enlace no es válido o ya venció. Pide una nueva invitación." },
+          { status: 401 },
+        );
+      }
+
+      const member = await getAuthorizedStaff(email);
+      if (!member) {
+        return NextResponse.json(
+          { error: "Correo no autorizado" },
+          { status: 401 },
+        );
+      }
+      if (member.passwordHash) {
+        return NextResponse.json(
+          { error: "Esta cuenta ya tiene contraseña. Inicia sesión." },
+          { status: 400 },
+        );
+      }
+
+      await setStaffPassword(email, password);
+      const user = await buildSessionUser({
+        email: member.email,
+        name: member.name,
+      });
+      if (!isStaffRole(user.role)) {
+        return NextResponse.json(
+          { error: "Correo no autorizado" },
+          { status: 401 },
+        );
+      }
+
+      await setSessionCookie(user);
+      return NextResponse.json({ user, created: true });
+    }
+
+    const email = normalizeEmail(String(body.email ?? ""));
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
     }
@@ -78,7 +168,6 @@ export async function POST(request: Request) {
         member &&
         (!member.passwordHash || isStaffResetAuthorized(member));
 
-      // Respuesta uniforme: no filtrar si el correo existe.
       if (canSetup && member) {
         const code = createLoginCode();
         await saveLoginCode(email, code);

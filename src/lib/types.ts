@@ -201,6 +201,8 @@ export interface MailMessage {
 export interface LoginCode {
   email: string;
   code: string;
+  /** otp = código corto; invite = enlace de alta de cuenta */
+  kind?: "otp" | "invite";
   expiresAt: string;
   createdAt: string;
 }

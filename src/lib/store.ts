@@ -1047,12 +1047,37 @@ export async function getReservationByCode(
 export async function saveLoginCode(email: string, code: string): Promise<LoginCode> {
   const store = await readStore();
   const normalized = email.trim().toLowerCase();
-  store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+  store.loginCodes = store.loginCodes.filter(
+    (item) => !(item.email === normalized && (item.kind ?? "otp") === "otp"),
+  );
   const entry: LoginCode = {
     email: normalized,
     code,
+    kind: "otp",
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  };
+  store.loginCodes.push(entry);
+  await writeStore(store);
+  return entry;
+}
+
+/** Enlace de alta: válido 48 horas. */
+export async function saveStaffInviteToken(
+  email: string,
+  token: string,
+): Promise<LoginCode> {
+  const store = await readStore();
+  const normalized = email.trim().toLowerCase();
+  store.loginCodes = store.loginCodes.filter(
+    (item) => !(item.email === normalized && item.kind === "invite"),
+  );
+  const entry: LoginCode = {
+    email: normalized,
+    code: token,
+    kind: "invite",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
   };
   store.loginCodes.push(entry);
   await writeStore(store);
@@ -1062,17 +1087,56 @@ export async function saveLoginCode(email: string, code: string): Promise<LoginC
 export async function consumeLoginCode(email: string, code: string): Promise<boolean> {
   const store = await readStore();
   const normalized = email.trim().toLowerCase();
-  const entry = store.loginCodes.find((item) => item.email === normalized);
+  const entry = store.loginCodes.find(
+    (item) =>
+      item.email === normalized &&
+      (item.kind ?? "otp") === "otp" &&
+      item.code === code.trim(),
+  );
   if (!entry) return false;
   if (entry.expiresAt < new Date().toISOString()) {
-    store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+    store.loginCodes = store.loginCodes.filter((item) => item !== entry);
     await writeStore(store);
     return false;
   }
-  if (entry.code !== code.trim()) return false;
-  store.loginCodes = store.loginCodes.filter((item) => item.email !== normalized);
+  store.loginCodes = store.loginCodes.filter((item) => item !== entry);
   await writeStore(store);
   return true;
+}
+
+/** Consume el token del enlace de invitación. Devuelve el correo o null. */
+export async function consumeStaffInviteToken(
+  token: string,
+): Promise<string | null> {
+  const store = await readStore();
+  const value = token.trim();
+  if (!value || value.length < 20) return null;
+  const entry = store.loginCodes.find(
+    (item) => item.kind === "invite" && item.code === value,
+  );
+  if (!entry) return null;
+  if (entry.expiresAt < new Date().toISOString()) {
+    store.loginCodes = store.loginCodes.filter((item) => item !== entry);
+    await writeStore(store);
+    return null;
+  }
+  store.loginCodes = store.loginCodes.filter((item) => item !== entry);
+  await writeStore(store);
+  return entry.email;
+}
+
+export async function peekStaffInviteToken(
+  token: string,
+): Promise<{ email: string; expiresAt: string } | null> {
+  const store = await readStore();
+  const value = token.trim();
+  if (!value) return null;
+  const entry = store.loginCodes.find(
+    (item) => item.kind === "invite" && item.code === value,
+  );
+  if (!entry) return null;
+  if (entry.expiresAt < new Date().toISOString()) return null;
+  return { email: entry.email, expiresAt: entry.expiresAt };
 }
 
 export async function appendMailOutbox(input: {

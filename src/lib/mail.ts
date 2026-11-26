@@ -116,8 +116,7 @@ export async function sendEmail(input: {
 export async function recordUndeliveredInvite(input: {
   to: string;
   name: string;
-  code: string;
-  loginUrl: string;
+  inviteUrl: string;
   reason: string;
 }) {
   const name = input.name.trim() || "equipo";
@@ -126,11 +125,11 @@ export async function recordUndeliveredInvite(input: {
     `Hola ${name},`,
     ``,
     `Te autorizaron como personal de ${HOTEL.name}.`,
-    `Código: ${input.code}`,
-    `Enlace: ${input.loginUrl}`,
+    `Abre este enlace para crear tu contraseña:`,
+    input.inviteUrl,
     ``,
     `Motivo: ${input.reason}`,
-    `Comparte este código con el empleado. Válido 10 minutos.`,
+    `El enlace vale 48 horas.`,
   ].join("\n");
   try {
     await persistOutbox({
@@ -229,49 +228,42 @@ export async function sendLoginCodeEmail(input: {
   return sendEmail({ to: input.to, subject, html, text });
 }
 
-/** Invitación al crear personal: código + enlace para crear contraseña. */
+/** Invitación al crear personal: un solo enlace para crear la contraseña. */
 export async function sendStaffInviteEmail(input: {
   to: string;
   name: string;
-  code: string;
-  loginUrl: string;
+  inviteUrl: string;
 }): Promise<SendMailResult> {
   const name = input.name.trim() || "equipo";
-  const subject = `Crea tu acceso · ${HOTEL.name}`;
+  const subject = `Crea tu cuenta · ${HOTEL.name}`;
   const text = [
     `Hola ${name},`,
     ``,
     `Te autorizaron como personal de ${HOTEL.name}.`,
-    `1) Entra a ${input.loginUrl}`,
-    `2) Elige “Crear contraseña” / primer acceso`,
-    `3) Usa tu correo y este código: ${input.code}`,
-    `4) Define tu contraseña`,
+    `Abre este enlace para crear tu contraseña:`,
+    input.inviteUrl,
     ``,
-    `El código vale 10 minutos. Si venció, en la misma página puedes pedir otro.`,
+    `El enlace vale 48 horas. Si ya lo usaste, entra con tu correo y contraseña en /personal.`,
   ].join("\n");
   const html = `
   <div style="font-family:Georgia,serif;background:#f7f3ef;padding:24px;color:#3d3129">
     <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:18px;overflow:hidden;border:1px solid #d8cfc4">
       <div style="background:linear-gradient(135deg,#3d3129,#6b5344);color:#fff;padding:28px 24px">
-        <p style="margin:0;letter-spacing:.2em;font-size:12px;text-transform:uppercase;opacity:.8">Personal autorizado</p>
+        <p style="margin:0;letter-spacing:.2em;font-size:12px;text-transform:uppercase;opacity:.8">Invitación de personal</p>
         <h1 style="margin:8px 0 0;font-size:26px">${HOTEL.name}</h1>
       </div>
       <div style="padding:24px">
         <p style="font-size:18px;margin:0 0 12px">Hola ${name},</p>
-        <p style="margin:0 0 16px;line-height:1.5">Te autorizaron para entrar al panel del hotel. Crea tu contraseña con este código:</p>
-        <div style="background:#f0e8df;border-radius:14px;padding:16px;margin-bottom:20px;text-align:center">
-          <p style="margin:0;font-size:13px;color:#6b5344">Código de acceso</p>
-          <p style="margin:8px 0 0;font-size:32px;letter-spacing:.18em"><strong>${input.code}</strong></p>
-          <p style="margin:10px 0 0;font-size:12px;color:#6b5344">Válido 10 minutos</p>
-        </div>
-        <p style="margin:0 0 8px;line-height:1.5">Entra aquí:</p>
-        <p style="margin:0 0 20px"><a href="${input.loginUrl}" style="color:#3d3129;font-weight:700">${input.loginUrl}</a></p>
-        <ol style="margin:0;padding-left:18px;line-height:1.6;color:#6b5344;font-size:14px">
-          <li>Abre el enlace</li>
-          <li>Elige crear contraseña / primer acceso</li>
-          <li>Ingresa tu correo y el código</li>
-          <li>Define tu contraseña</li>
-        </ol>
+        <p style="margin:0 0 20px;line-height:1.5">Te autorizaron para entrar al panel del hotel. Pulsa el botón y elige tu contraseña:</p>
+        <p style="margin:0 0 24px;text-align:center">
+          <a href="${input.inviteUrl}" style="display:inline-block;background:#3d3129;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:700">
+            Crear mi cuenta
+          </a>
+        </p>
+        <p style="margin:0;font-size:13px;color:#6b5344;line-height:1.5">Si el botón no funciona, copia este enlace:<br/>
+          <a href="${input.inviteUrl}" style="color:#3d3129;word-break:break-all">${input.inviteUrl}</a>
+        </p>
+        <p style="margin:16px 0 0;font-size:12px;color:#6b5344">Válido 48 horas · solo para ${input.to}</p>
       </div>
     </div>
   </div>`;

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type Mode = "login" | "setup" | "jefe-recover" | "empleado-request";
+type Mode = "login" | "setup" | "invite" | "jefe-recover" | "empleado-request";
 
 type PublicConfig = {
   emailAuthEnabled?: boolean;
@@ -18,13 +18,16 @@ type PublicConfig = {
 export function StaffAuthForm({
   nextPath = "/admin",
   compact = false,
+  inviteToken,
 }: {
   nextPath?: string;
   compact?: boolean;
+  inviteToken?: string;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(inviteToken ? "invite" : "login");
   const [email, setEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
@@ -64,6 +67,42 @@ export function StaffAuthForm({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/auth/setup-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "peek-invite", token: inviteToken }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (cancelled) return;
+        if (!response.ok) {
+          setError(data.error || "Enlace inválido");
+          setMode("login");
+          return;
+        }
+        setEmail(data.email || "");
+        setInviteName(data.name || "");
+        setMode("invite");
+        setInfo("Elige tu contraseña para activar la cuenta.");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("No se pudo validar el enlace");
+          setMode("login");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
 
   async function onLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -119,6 +158,34 @@ export function StaffAuthForm({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo guardar");
+      router.push(nextPath);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onInvite(event: React.FormEvent) {
+    event.preventDefault();
+    if (!inviteToken) return;
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const response = await fetch("/api/auth/setup-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "confirm-invite",
+          token: inviteToken,
+          password,
+          confirm,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo crear la cuenta");
       router.push(nextPath);
       router.refresh();
     } catch (err) {
@@ -263,6 +330,53 @@ export function StaffAuthForm({
               Recuperar contraseña
             </button>
           </div>
+        </form>
+      )}
+
+      {mode === "invite" && (
+        <form onSubmit={onInvite} className="space-y-4">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] text-2xl font-extrabold">
+              Crear tu cuenta
+            </h2>
+            <p className="mt-2 text-sm text-[var(--brand-muted)]">
+              {inviteName
+                ? `Hola ${inviteName}. `
+                : ""}
+              Correo autorizado: <strong>{email || "…"}</strong>
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite-password">Nueva contraseña</Label>
+            <Input
+              id="invite-password"
+              type="password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="h-11 rounded-xl"
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite-confirm">Confirmar</Label>
+            <Input
+              id="invite-confirm"
+              type="password"
+              required
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+              className="h-11 rounded-xl"
+              autoComplete="new-password"
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={loading || !email}
+            className="h-11 w-full rounded-full bg-[var(--brand-deep)] font-semibold hover:bg-[var(--brand-ink)]"
+          >
+            {loading ? "Creando…" : "Activar cuenta y entrar"}
+          </Button>
         </form>
       )}
 

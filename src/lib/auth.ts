@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { createHmac, randomInt, timingSafeEqual } from "crypto";
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import type { StaffMember, StaffRole, UserRole } from "@/lib/types";
 
 const COOKIE_NAME = "hotel_user_session";
@@ -264,6 +264,11 @@ export async function requireOwner(): Promise<SessionUser | null> {
 
 export function createLoginCode(): string {
   return String(randomInt(100000, 999999));
+}
+
+/** Token largo para enlace de invitación (no adivinable). */
+export function createInviteToken(): string {
+  return randomBytes(24).toString("hex");
 }
 
 export function getAppOrigin(request: Request): string {

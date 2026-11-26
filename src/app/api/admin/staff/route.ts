@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   assertStaffRole,
-  createLoginCode,
+  createInviteToken,
   getAppOrigin,
   getOwnerEmails,
   isEmailAuthConfigured,
@@ -19,28 +19,25 @@ import {
   deleteStaffMember,
   getAuthorizedStaff,
   listStaffMembers,
-  saveLoginCode,
+  saveStaffInviteToken,
   setStaffActive,
   upsertStaffMember,
 } from "@/lib/store";
 
 type InviteResult = {
-  code: string;
-  loginUrl: string;
+  inviteUrl: string;
   delivered: boolean;
   error: string | null;
 };
 
-function resolveLoginUrl(request: Request): string {
-  let origin: string;
+function resolveOrigin(request: Request): string {
   try {
-    origin = getAppOrigin(request);
+    return getAppOrigin(request);
   } catch {
-    origin = process.env.VERCEL_PROJECT_PRODUCTION_URL
+    return process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : "https://gran-real-hotel.vercel.app";
   }
-  return `${origin.replace(/\/$/, "")}/personal`;
 }
 
 async function sendInviteForStaff(input: {
@@ -53,42 +50,40 @@ async function sendInviteForStaff(input: {
     throw new Error("Personal no autorizado o inactivo");
   }
 
-  const code = createLoginCode();
-  await saveLoginCode(input.email, code);
-  const loginUrl = resolveLoginUrl(input.request);
+  const token = createInviteToken();
+  await saveStaffInviteToken(input.email, token);
+  const origin = resolveOrigin(input.request).replace(/\/$/, "");
+  const inviteUrl = `${origin}/personal?invite=${encodeURIComponent(token)}`;
   const name = input.name || member.name;
 
   if (!isEmailAuthConfigured()) {
     const error =
-      "El correo no está configurado (RESEND_API_KEY / MAIL_FROM). Comparte el código manualmente.";
+      "El correo no está configurado (RESEND_API_KEY / MAIL_FROM). Comparte el enlace manualmente.";
     await recordUndeliveredInvite({
       to: input.email,
       name,
-      code,
-      loginUrl,
+      inviteUrl,
       reason: error,
     });
-    return { code, loginUrl, delivered: false, error };
+    return { inviteUrl, delivered: false, error };
   }
 
   try {
     await sendStaffInviteEmail({
       to: input.email,
       name,
-      code,
-      loginUrl,
+      inviteUrl,
     });
-    return { code, loginUrl, delivered: true, error: null };
+    return { inviteUrl, delivered: true, error: null };
   } catch (err) {
     const error = humanizeMailError(err);
     await recordUndeliveredInvite({
       to: input.email,
       name,
-      code,
-      loginUrl,
+      inviteUrl,
       reason: error,
     });
-    return { code, loginUrl, delivered: false, error };
+    return { inviteUrl, delivered: false, error };
   }
 }
 
@@ -163,12 +158,11 @@ export async function POST(request: Request) {
       {
         member,
         inviteSent: invite.delivered,
-        inviteCode: invite.code,
-        loginUrl: invite.loginUrl,
+        inviteUrl: invite.inviteUrl,
         inviteError: invite.error,
         message: invite.delivered
-          ? `Listo: se autorizó a ${email} y se envió el correo con el código.`
-          : `Listo: se autorizó a ${email}. El correo no salió (${invite.error}). Comparte este código: ${invite.code}`,
+          ? `Listo: se envió el enlace de crear cuenta a ${email}.`
+          : `Listo: se autorizó a ${email}. El correo no salió (${invite.error}). Copia el enlace y envíaselo.`,
       },
       { status: 201 },
     );
@@ -227,12 +221,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         ok: true,
         inviteSent: invite.delivered,
-        inviteCode: invite.code,
-        loginUrl: invite.loginUrl,
+        inviteUrl: invite.inviteUrl,
         inviteError: invite.error,
         message: invite.delivered
-          ? `Listo: correo reenviado a ${email}.`
-          : `El correo no salió. Comparte este código con ${email}: ${invite.code}`,
+          ? `Listo: enlace reenviado a ${email}.`
+          : `El correo no salió. Copia el enlace y envíaselo a ${email}.`,
       });
     }
 

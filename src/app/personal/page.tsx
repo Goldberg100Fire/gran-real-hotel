@@ -13,11 +13,12 @@ export const metadata = {
 export default async function PersonalAccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{ next?: string; error?: string; invite?: string }>;
 }) {
   const params = await searchParams;
   const user = await getSessionUser();
   const nextPath = safeStaffNext(params.next);
+  const inviteToken = params.invite?.trim() || "";
 
   if (user && isStaffRole(user.role)) {
     redirect(nextPath);
@@ -68,12 +69,18 @@ export default async function PersonalAccessPage({
                 Acceso al panel
               </h1>
               <p className="mt-2 text-sm leading-relaxed text-[var(--brand-muted)]">
-                Correo y contraseña del hotel. Sin registro público.
+                {inviteToken
+                  ? "Elige tu contraseña para activar tu cuenta de personal."
+                  : "Correo y contraseña del hotel. Sin registro público."}
               </p>
             </div>
 
             <div className="px-7 py-6 sm:px-8 sm:py-7">
-              <StaffAuthForm nextPath={nextPath} compact />
+              <StaffAuthForm
+                nextPath={nextPath}
+                compact
+                inviteToken={inviteToken || undefined}
+              />
             </div>
           </div>
 

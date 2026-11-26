@@ -104,8 +104,7 @@ export function AdminPanel({
   const toastRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toastTone, setToastTone] = useState<ToastTone>("success");
-  const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const [inviteLoginUrl, setInviteLoginUrl] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<
@@ -307,11 +306,10 @@ export function AdminPanel({
     if (!info || toastTone === "error") return;
     const timer = window.setTimeout(() => {
       setInfo(null);
-      setInviteCode(null);
-      setInviteLoginUrl(null);
-    }, 12000);
+      setInviteUrl(null);
+    }, 20000);
     return () => window.clearTimeout(timer);
-  }, [info, toastTone, inviteCode]);
+  }, [info, toastTone, inviteUrl]);
 
   function flashToast(tone: ToastTone, message: string) {
     if (tone === "error") {
@@ -330,8 +328,7 @@ export function AdminPanel({
 
   function notifyOk(message: string, options?: { keepInvite?: boolean }) {
     if (!options?.keepInvite) {
-      setInviteCode(null);
-      setInviteLoginUrl(null);
+      setInviteUrl(null);
     }
     flashToast("success", message);
   }
@@ -341,8 +338,7 @@ export function AdminPanel({
   }
 
   function notifyErr(message: string) {
-    setInviteCode(null);
-    setInviteLoginUrl(null);
+    setInviteUrl(null);
     flashToast("error", message);
   }
 
@@ -612,7 +608,7 @@ export function AdminPanel({
     event.preventDefault();
     setError(null);
     setInfo(null);
-    setInviteCode(null);
+    setInviteUrl(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "POST",
       body: JSON.stringify({
@@ -626,21 +622,18 @@ export function AdminPanel({
       notifyErr(data.error || "No se pudo agregar");
       return;
     }
-    if (data.inviteCode) {
-      setInviteCode(String(data.inviteCode));
-      setInviteLoginUrl(
-        typeof data.loginUrl === "string" ? data.loginUrl : null,
-      );
+    if (data.inviteUrl) {
+      setInviteUrl(String(data.inviteUrl));
     }
     if (data.inviteSent) {
       notifyOk(
         data.message ||
-          `Listo: se envió el correo a ${staffEmail} con el código.`,
+          `Listo: se envió el enlace de crear cuenta a ${staffEmail}.`,
       );
     } else {
       notifyWarn(
         data.message ||
-          "Personal autorizado. El correo no salió; comparte el código de abajo.",
+          "Personal autorizado. El correo no salió; copia el enlace de abajo.",
       );
     }
     setStaffEmail("");
@@ -688,7 +681,7 @@ export function AdminPanel({
   async function resendStaffInvite(email: string) {
     setError(null);
     setInfo(null);
-    setInviteCode(null);
+    setInviteUrl(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "PATCH",
       body: JSON.stringify({ email, resendInvite: true }),
@@ -698,18 +691,15 @@ export function AdminPanel({
       notifyErr(data.error || "No se pudo reenviar el correo");
       return;
     }
-    if (data.inviteCode) {
-      setInviteCode(String(data.inviteCode));
-      setInviteLoginUrl(
-        typeof data.loginUrl === "string" ? data.loginUrl : null,
-      );
+    if (data.inviteUrl) {
+      setInviteUrl(String(data.inviteUrl));
     }
     if (data.inviteSent) {
-      notifyOk(data.message || `Listo: correo reenviado a ${email}`);
+      notifyOk(data.message || `Listo: enlace reenviado a ${email}`);
     } else {
       notifyWarn(
         data.message ||
-          "El correo no salió. Comparte el código de abajo con el empleado.",
+          "El correo no salió. Copia el enlace de abajo y envíaselo.",
       );
     }
     await loadSummary();
@@ -1395,7 +1385,7 @@ export function AdminPanel({
         ))}
       </div>
 
-      {(error || info || inviteCode) && (
+      {(error || info || inviteUrl) && (
         <div
           ref={toastRef}
           role="status"
@@ -1416,24 +1406,23 @@ export function AdminPanel({
               onClick={() => {
                 setError(null);
                 setInfo(null);
-                setInviteCode(null);
-                setInviteLoginUrl(null);
+                setInviteUrl(null);
               }}
             >
               Cerrar
             </button>
           </div>
-          {inviteCode ? (
+          {inviteUrl ? (
             <div className="rounded-xl bg-white/80 px-4 py-3 ring-1 ring-black/5">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
-                Código para el empleado
+                Enlace para crear cuenta
               </p>
-              <p className="mt-1 font-mono text-3xl font-bold tracking-[0.2em] text-[var(--brand-ink)]">
-                {inviteCode}
+              <p className="mt-2 break-all font-mono text-xs text-[var(--brand-ink)]">
+                {inviteUrl}
               </p>
               <p className="mt-2 text-xs text-[var(--brand-muted)]">
-                Válido 10 minutos. Entrar en{" "}
-                {inviteLoginUrl || "/personal"} → Crear contraseña.
+                Válido 48 horas. El empleado abre el enlace y elige su
+                contraseña.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
@@ -1442,14 +1431,14 @@ export function AdminPanel({
                   className="rounded-lg"
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(inviteCode);
-                      notifyOk("Código copiado", { keepInvite: true });
+                      await navigator.clipboard.writeText(inviteUrl);
+                      notifyOk("Enlace copiado", { keepInvite: true });
                     } catch {
-                      notifyErr("No se pudo copiar el código");
+                      notifyErr("No se pudo copiar el enlace");
                     }
                   }}
                 >
-                  Copiar código
+                  Copiar enlace
                 </Button>
               </div>
             </div>
@@ -3164,9 +3153,9 @@ export function AdminPanel({
       {tab === "personal" && permissions.manageStaff && (
         <div className="space-y-6">
           <p className="text-sm text-[var(--brand-muted)]">
-            Al autorizar se intenta enviar el correo con el código. Si Resend
-            está en modo prueba (sin dominio verificado), verás el código aquí
-            para compartirlo. El empleado entra a /personal → Crear contraseña.
+            Al autorizar se envía un enlace al correo para que cree su
+            contraseña. Si Resend aún no tiene dominio verificado, el correo no
+            llegará: copia el enlace del aviso y envíaselo (WhatsApp).
           </p>
           {(snapshot.ownersFromSecrets ?? []).length > 0 && (
             <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
