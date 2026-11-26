@@ -20,6 +20,7 @@ import {
   type GuestProfile,
   type HotelBranch,
   type MailMessage,
+  type MailSettings,
   type PriceOffer,
   type PriceOfferKind,
   type Reservation,
@@ -43,6 +44,7 @@ interface Snapshot {
   services: Service[];
   reservations: Reservation[];
   mailOutbox: MailMessage[];
+  mailSettings?: MailSettings | null;
   staffMembers: StaffMemberPublic[];
   guests: GuestProfile[];
   priceOffers: PriceOffer[];
@@ -162,6 +164,21 @@ export function AdminPanel({
   const [offerDiscountPercent, setOfferDiscountPercent] = useState("10");
   const [offerPackageNights, setOfferPackageNights] = useState("2");
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
+  const [mailDomainInput, setMailDomainInput] = useState("");
+  const [mailDomainBusy, setMailDomainBusy] = useState(false);
+  const [mailDomainDetail, setMailDomainDetail] = useState<{
+    id: string;
+    name: string;
+    status: string;
+    records?: Array<{
+      record: string;
+      name: string;
+      type: string;
+      value: string;
+      status?: string;
+      priority?: number;
+    }>;
+  } | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDescription, setNewTypeDescription] = useState("");
@@ -266,6 +283,25 @@ export function AdminPanel({
       setError(err instanceof Error ? err.message : "Error"),
     );
   }, [loadSummary]);
+
+  useEffect(() => {
+    if (tab !== "correos" || role !== "jefe") return;
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/mail-domain");
+        const data = await response.json();
+        if (!response.ok) return;
+        if (data.active) {
+          setMailDomainDetail(data.active);
+          setMailDomainInput(data.active.name || "");
+        } else if (data.settings?.domain) {
+          setMailDomainInput(data.settings.domain);
+        }
+      } catch {
+        // silencioso al abrir la pestaña
+      }
+    })();
+  }, [tab, role]);
 
   useEffect(() => {
     if (!info || toastTone === "error") return;
@@ -1126,6 +1162,99 @@ export function AdminPanel({
     if (!response.ok) throw new Error(data.error || "Error al eliminar");
     await loadSummary();
     notifyOk("Listo: servicio eliminado");
+  }
+
+  async function loadMailDomain() {
+    const response = await adminFetch("/api/admin/mail-domain");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "No se pudo cargar el dominio de correo");
+    }
+    if (data.active) {
+      setMailDomainDetail(data.active);
+      setMailDomainInput(data.active.name || "");
+    } else if (data.settings?.domain) {
+      setMailDomainInput(data.settings.domain);
+    }
+    return data;
+  }
+
+  async function createMailDomain(event: React.FormEvent) {
+    event.preventDefault();
+    setMailDomainBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/mail-domain", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "create",
+          domain: mailDomainInput,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        notifyErr(data.error || "No se pudo agregar el dominio");
+        return;
+      }
+      setMailDomainDetail(data.domain);
+      notifyOk(data.message || "Dominio agregado en Resend");
+      await loadSummary();
+      await loadMailDomain();
+    } finally {
+      setMailDomainBusy(false);
+    }
+  }
+
+  async function verifyMailDomain() {
+    setMailDomainBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/mail-domain", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "verify",
+          domainId: mailDomainDetail?.id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        notifyErr(data.error || "No se pudo verificar");
+        return;
+      }
+      setMailDomainDetail(data.domain);
+      if (
+        data.domain?.status === "verified" ||
+        data.domain?.status === "partially_verified"
+      ) {
+        notifyOk(data.message || "Dominio verificado");
+      } else {
+        notifyWarn(data.message || `Estado: ${data.domain?.status}`);
+      }
+      await loadSummary();
+    } finally {
+      setMailDomainBusy(false);
+    }
+  }
+
+  async function refreshMailDomain() {
+    setMailDomainBusy(true);
+    try {
+      const response = await adminFetch("/api/admin/mail-domain", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "refresh",
+          domainId: mailDomainDetail?.id,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        notifyErr(data.error || "No se pudo actualizar el estado");
+        return;
+      }
+      setMailDomainDetail(data.domain);
+      notifyOk(data.message || "Estado actualizado");
+      await loadSummary();
+    } finally {
+      setMailDomainBusy(false);
+    }
   }
 
   if (!snapshot) {
@@ -3258,42 +3387,195 @@ export function AdminPanel({
       )}
 
       {tab === "correos" && permissions.manageStaff && (
-        <div className="space-y-4">
-          <p className="text-sm text-[var(--brand-muted)]">
-            Códigos de acceso y comprobantes. Visible solo para el jefe.
-          </p>
-          {(snapshot.mailOutbox ?? []).length === 0 ? (
-            <div className="rounded-2xl bg-white p-8 text-center text-[var(--brand-muted)] ring-1 ring-[var(--brand-line)]">
-              Aún no hay correos registrados.
+        <div className="space-y-6">
+          <section className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5">
+            <div>
+              <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
+                Dominio para enviar correos
+              </h3>
+              <p className="mt-1 text-sm text-[var(--brand-muted)]">
+                Resend solo deja enviar a tu propio correo hasta verificar un
+                dominio propio (ej.{" "}
+                <span className="font-medium text-[var(--brand-ink)]">
+                  granrealhotel.com
+                </span>
+                ). No sirve{" "}
+                <span className="font-medium">vercel.app</span> ni el correo
+                universitario <span className="font-medium">edu.pe</span>.
+              </p>
+              <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-[var(--brand-muted)]">
+                <li>Compra o usa un dominio que controles (Namecheap, GoDaddy, Cloudflare…).</li>
+                <li>Escríbelo abajo y pulsa Agregar en Resend.</li>
+                <li>Copia los registros DNS en tu proveedor del dominio.</li>
+                <li>Espera unos minutos y pulsa Verificar.</li>
+              </ol>
             </div>
-          ) : (
-            (snapshot.mailOutbox ?? []).map((mail) => (
-              <article
-                key={mail.id}
-                className="rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)]"
+
+            {(snapshot.mailSettings || mailDomainDetail) && (
+              <div className="rounded-xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
+                <p>
+                  Dominio:{" "}
+                  <strong>
+                    {mailDomainDetail?.name || snapshot.mailSettings?.domain}
+                  </strong>
+                </p>
+                <p className="mt-1">
+                  Estado:{" "}
+                  <strong>
+                    {mailDomainDetail?.status || snapshot.mailSettings?.status}
+                  </strong>
+                </p>
+                <p className="mt-1 text-[var(--brand-muted)]">
+                  Remitente:{" "}
+                  {snapshot.mailSettings?.fromAddress ||
+                    `Gran Real Hotel <noreply@${mailDomainDetail?.name || "tudominio.com"}>`}
+                </p>
+              </div>
+            )}
+
+            <form
+              onSubmit={createMailDomain}
+              className="flex flex-col gap-3 sm:flex-row sm:items-end"
+            >
+              <div className="flex-1 space-y-1.5">
+                <Label>Dominio</Label>
+                <Input
+                  value={mailDomainInput}
+                  onChange={(event) => setMailDomainInput(event.target.value)}
+                  placeholder="granrealhotel.com"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={mailDomainBusy}
+                className="rounded-lg bg-[var(--brand-deep)]"
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-[var(--brand-ink)]">
-                      {mail.subject}
-                    </p>
-                    <p className="text-sm text-[var(--brand-muted)]">
-                      Para {mail.to} · {mail.mode}
-                      {mail.delivered ? " · enviado" : " · demo"}
+                {mailDomainBusy ? "Procesando…" : "Agregar en Resend"}
+              </Button>
+            </form>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg"
+                disabled={mailDomainBusy || !mailDomainDetail?.id}
+                onClick={() => verifyMailDomain()}
+              >
+                Verificar DNS
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-lg"
+                disabled={mailDomainBusy || !mailDomainDetail?.id}
+                onClick={() => refreshMailDomain()}
+              >
+                Actualizar estado
+              </Button>
+              <a
+                href="https://resend.com/domains"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-9 items-center rounded-lg border border-[var(--brand-line)] px-3 text-sm font-medium text-[var(--brand-ink)] hover:bg-[var(--brand-mist)]"
+              >
+                Abrir Resend
+              </a>
+            </div>
+
+            {(mailDomainDetail?.records?.length ?? 0) > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-[var(--brand-line)]">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="bg-[var(--brand-mist)] text-[var(--brand-muted)]">
+                    <tr>
+                      <th className="px-3 py-2">Tipo</th>
+                      <th className="px-3 py-2">Nombre</th>
+                      <th className="px-3 py-2">Valor</th>
+                      <th className="px-3 py-2">Estado</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mailDomainDetail!.records!.map((record, index) => (
+                      <tr
+                        key={`${record.type}-${record.name}-${index}`}
+                        className="border-t border-[var(--brand-line)]"
+                      >
+                        <td className="px-3 py-2 font-medium">{record.type}</td>
+                        <td className="px-3 py-2 font-mono">{record.name}</td>
+                        <td className="max-w-[280px] truncate px-3 py-2 font-mono">
+                          {record.priority != null
+                            ? `${record.priority} ${record.value}`
+                            : record.value}
+                        </td>
+                        <td className="px-3 py-2">{record.status || "—"}</td>
+                        <td className="px-3 py-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 rounded-lg px-2"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(
+                                  record.value,
+                                );
+                                notifyOk("Valor DNS copiado", {
+                                  keepInvite: true,
+                                });
+                              } catch {
+                                notifyErr("No se pudo copiar");
+                              }
+                            }}
+                          >
+                            Copiar
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--brand-muted)]">
+              Historial de códigos y comprobantes.
+            </p>
+            {(snapshot.mailOutbox ?? []).length === 0 ? (
+              <div className="rounded-2xl border border-[var(--brand-line)] bg-white p-8 text-center text-[var(--brand-muted)]">
+                Aún no hay correos registrados.
+              </div>
+            ) : (
+              (snapshot.mailOutbox ?? []).map((mail) => (
+                <article
+                  key={mail.id}
+                  className="rounded-2xl border border-[var(--brand-line)] bg-white p-5"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-[var(--brand-ink)]">
+                        {mail.subject}
+                      </p>
+                      <p className="text-sm text-[var(--brand-muted)]">
+                        Para {mail.to} · {mail.mode}
+                        {mail.delivered ? " · enviado" : " · pendiente"}
+                      </p>
+                    </div>
+                    <p className="text-xs text-[var(--brand-muted)]">
+                      {new Date(mail.createdAt).toLocaleString("es-PE", {
+                        timeZone: "America/Lima",
+                      })}
                     </p>
                   </div>
-                  <p className="text-xs text-[var(--brand-muted)]">
-                    {new Date(mail.createdAt).toLocaleString("es-PE", {
-                      timeZone: "America/Lima",
-                    })}
-                  </p>
-                </div>
-                <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-[var(--brand-mist)] p-3 text-xs text-[var(--brand-ink)]">
-                  {mail.text}
-                </pre>
-              </article>
-            ))
-          )}
+                  <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-[var(--brand-mist)] p-3 text-xs text-[var(--brand-ink)]">
+                    {mail.text}
+                  </pre>
+                </article>
+              ))
+            )}
+          </div>
         </div>
       )}
         </div>

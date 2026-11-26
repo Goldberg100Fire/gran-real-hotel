@@ -222,6 +222,15 @@ export interface GalleryImage {
 
 export type GalleryImagePublic = Omit<GalleryImage, "imageBlob">;
 
+/** Dominio Resend verificado / en proceso para enviar a cualquier correo. */
+export interface MailSettings {
+  domain: string;
+  domainId: string;
+  status: string;
+  fromAddress: string;
+  updatedAt: string;
+}
+
 export interface HotelStore {
   branches: HotelBranch[];
   services: Service[];
@@ -234,6 +243,7 @@ export interface HotelStore {
   guests: GuestProfile[];
   priceOffers: PriceOffer[];
   galleryImages: GalleryImage[];
+  mailSettings?: MailSettings | null;
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

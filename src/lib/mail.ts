@@ -64,7 +64,8 @@ export async function sendEmail(input: {
   text: string;
 }): Promise<SendMailResult> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.MAIL_FROM;
+  const { getResolvedMailFrom } = await import("./store");
+  const from = (await getResolvedMailFrom()) || process.env.MAIL_FROM;
   if (!apiKey || !from) {
     throw new Error(
       "Correo no configurado. Define RESEND_API_KEY y MAIL_FROM en los secretos.",

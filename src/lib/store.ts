@@ -28,6 +28,7 @@ import type {
   HotelStore,
   LoginCode,
   MailMessage,
+  MailSettings,
   PaymentMethod,
   PriceOffer,
   PriceOfferKind,
@@ -211,6 +212,7 @@ function normalizeStore(store: HotelStore): HotelStore {
     guests: store.guests ?? [],
     priceOffers: store.priceOffers ?? [],
     galleryImages: store.galleryImages ?? [],
+    mailSettings: store.mailSettings ?? null,
   });
 }
 
@@ -246,6 +248,7 @@ async function persistFileStore(store: HotelStore): Promise<void> {
 async function readFirestoreStore(): Promise<HotelStore> {
   const db = getDb();
   const [
+    hotelSnap,
     branchesSnap,
     servicesSnap,
     roomTypesSnap,
@@ -258,6 +261,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     offersSnap,
     gallerySnap,
   ] = await Promise.all([
+    db.collection(COLLECTIONS.hotel).doc("gran-real").get(),
     db.collection(COLLECTIONS.branches).get(),
     db.collection(COLLECTIONS.services).get(),
     db.collection(COLLECTIONS.roomTypes).get(),
@@ -277,6 +281,15 @@ async function readFirestoreStore(): Promise<HotelStore> {
     return cloneStore(seed);
   }
 
+  const hotelData = hotelSnap.exists ? hotelSnap.data() : null;
+  const mailSettings =
+    hotelData &&
+    typeof hotelData === "object" &&
+    "mailSettings" in hotelData
+      ? ((hotelData as { mailSettings?: MailSettings | null }).mailSettings ??
+        null)
+      : null;
+
   return cloneStore({
     branches: branchesSnap.docs.map((doc) => doc.data() as HotelBranch),
     services: servicesSnap.docs.map((doc) => doc.data() as Service),
@@ -289,6 +302,7 @@ async function readFirestoreStore(): Promise<HotelStore> {
     guests: guestsSnap.docs.map((doc) => doc.data() as GuestProfile),
     priceOffers: offersSnap.docs.map((doc) => doc.data() as PriceOffer),
     galleryImages: gallerySnap.docs.map((doc) => doc.data() as GalleryImage),
+    mailSettings,
   });
 }
 
@@ -298,6 +312,7 @@ export async function seedFirestore(store: HotelStore = createSeedStore()): Prom
 
   batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
     ...HOTEL,
+    mailSettings: store.mailSettings ?? null,
     updatedAt: new Date().toISOString(),
   });
 
@@ -342,6 +357,7 @@ async function writeFirestoreStore(store: HotelStore): Promise<void> {
   ops.push((batch) =>
     batch.set(db.collection(COLLECTIONS.hotel).doc("gran-real"), {
       ...HOTEL,
+      mailSettings: store.mailSettings ?? null,
       updatedAt: new Date().toISOString(),
     }),
   );
@@ -2229,6 +2245,32 @@ export async function deleteRoomType(id: string): Promise<void> {
   }
 }
 
+export async function getMailSettings(): Promise<MailSettings | null> {
+  const store = await readStore();
+  return store.mailSettings ?? null;
+}
+
+export async function saveMailSettings(
+  settings: MailSettings | null,
+): Promise<MailSettings | null> {
+  const store = await readStore();
+  store.mailSettings = settings;
+  await writeStore(store);
+  return store.mailSettings ?? null;
+}
+
+/** Remitente efectivo: dominio verificado en panel, o MAIL_FROM del secreto. */
+export async function getResolvedMailFrom(): Promise<string | null> {
+  const settings = await getMailSettings();
+  if (
+    settings?.fromAddress &&
+    (settings.status === "verified" || settings.status === "partially_verified")
+  ) {
+    return settings.fromAddress;
+  }
+  return process.env.MAIL_FROM?.trim() || null;
+}
+
 export async function getAdminSnapshot() {
   await ensureOwnerStaffRecords();
   const store = await readStore();
@@ -2242,6 +2284,7 @@ export async function getAdminSnapshot() {
     services: store.services,
     reservations: store.reservations,
     mailOutbox: store.mailOutbox,
+    mailSettings: store.mailSettings ?? null,
     staffMembers: store.staffMembers.map(toStaffPublic),
     guests: store.guests,
     priceOffers: store.priceOffers,

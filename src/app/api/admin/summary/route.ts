@@ -29,6 +29,7 @@ export async function GET() {
     ...snapshot,
     staffMembers: fullAccess ? snapshot.staffMembers : [],
     mailOutbox: fullAccess ? snapshot.mailOutbox : [],
+    mailSettings: fullAccess ? snapshot.mailSettings ?? null : null,
     guests: fullAccess ? snapshot.guests : [],
     reservations: snapshot.reservations.map((reservation) =>
       redactReservationForStaff(reservation, fullAccess),
