@@ -163,24 +163,9 @@ export function AdminPanel({
   const [offerDiscountPercent, setOfferDiscountPercent] = useState("10");
   const [offerPackageNights, setOfferPackageNights] = useState("2");
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
-  const [mailDomainInput, setMailDomainInput] = useState("");
   const [mailDomainBusy, setMailDomainBusy] = useState(false);
   const [mailStatus, setMailStatus] = useState<{
     smtp?: { configured?: boolean; user?: string | null };
-    resend?: { configured?: boolean };
-  } | null>(null);
-  const [mailDomainDetail, setMailDomainDetail] = useState<{
-    id: string;
-    name: string;
-    status: string;
-    records?: Array<{
-      record: string;
-      name: string;
-      type: string;
-      value: string;
-      status?: string;
-      priority?: number;
-    }>;
   } | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
@@ -294,16 +279,7 @@ export function AdminPanel({
         const response = await fetch("/api/admin/mail-domain");
         const data = await response.json();
         if (!response.ok) return;
-        setMailStatus({
-          smtp: data.smtp,
-          resend: data.resend,
-        });
-        if (data.active) {
-          setMailDomainDetail(data.active);
-          setMailDomainInput(data.active.name || "");
-        } else if (data.settings?.domain) {
-          setMailDomainInput(data.settings.domain);
-        }
+        setMailStatus({ smtp: data.smtp });
       } catch {
         // silencioso al abrir la pestaña
       }
@@ -1170,99 +1146,6 @@ export function AdminPanel({
     if (!response.ok) throw new Error(data.error || "Error al eliminar");
     await loadSummary();
     notifyOk("Listo: servicio eliminado");
-  }
-
-  async function loadMailDomain() {
-    const response = await adminFetch("/api/admin/mail-domain");
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "No se pudo cargar el dominio de correo");
-    }
-    if (data.active) {
-      setMailDomainDetail(data.active);
-      setMailDomainInput(data.active.name || "");
-    } else if (data.settings?.domain) {
-      setMailDomainInput(data.settings.domain);
-    }
-    return data;
-  }
-
-  async function createMailDomain(event: React.FormEvent) {
-    event.preventDefault();
-    setMailDomainBusy(true);
-    try {
-      const response = await adminFetch("/api/admin/mail-domain", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "create",
-          domain: mailDomainInput,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        notifyErr(data.error || "No se pudo agregar el dominio");
-        return;
-      }
-      setMailDomainDetail(data.domain);
-      notifyOk(data.message || "Dominio agregado en Resend");
-      await loadSummary();
-      await loadMailDomain();
-    } finally {
-      setMailDomainBusy(false);
-    }
-  }
-
-  async function verifyMailDomain() {
-    setMailDomainBusy(true);
-    try {
-      const response = await adminFetch("/api/admin/mail-domain", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "verify",
-          domainId: mailDomainDetail?.id,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        notifyErr(data.error || "No se pudo verificar");
-        return;
-      }
-      setMailDomainDetail(data.domain);
-      if (
-        data.domain?.status === "verified" ||
-        data.domain?.status === "partially_verified"
-      ) {
-        notifyOk(data.message || "Dominio verificado");
-      } else {
-        notifyWarn(data.message || `Estado: ${data.domain?.status}`);
-      }
-      await loadSummary();
-    } finally {
-      setMailDomainBusy(false);
-    }
-  }
-
-  async function refreshMailDomain() {
-    setMailDomainBusy(true);
-    try {
-      const response = await adminFetch("/api/admin/mail-domain", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "refresh",
-          domainId: mailDomainDetail?.id,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        notifyErr(data.error || "No se pudo actualizar el estado");
-        return;
-      }
-      setMailDomainDetail(data.domain);
-      notifyOk(data.message || "Estado actualizado");
-      await loadSummary();
-    } finally {
-      setMailDomainBusy(false);
-    }
   }
 
   async function sendTestMail() {
@@ -3413,213 +3296,29 @@ export function AdminPanel({
 
       {tab === "correos" && permissions.manageStaff && (
         <div className="space-y-6">
-          <section className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5">
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--brand-line)] bg-white p-5">
             <div>
               <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
-                Enviar invitaciones sin comprar dominio
+                Correos enviados
               </h3>
               <p className="mt-1 text-sm text-[var(--brand-muted)]">
-                Usa un Gmail (o Google Workspace) con{" "}
-                <strong>contraseña de aplicación</strong>. Así el sistema envía
-                el enlace de crear cuenta a cualquier empleado, sin dominio
-                propio.
-              </p>
-              <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-[var(--brand-muted)]">
-                <li>
-                  En tu cuenta Google: Seguridad → verificación en 2 pasos →
-                  Contraseñas de aplicaciones.
-                </li>
-                <li>
-                  Crea una para “Correo” y guarda la clave de 16 letras.
-                </li>
-                <li>
-                  En secretos del proyecto agrega{" "}
-                  <code className="rounded bg-[var(--brand-mist)] px-1">
-                    SMTP_USER
-                  </code>{" "}
-                  (tu Gmail) y{" "}
-                  <code className="rounded bg-[var(--brand-mist)] px-1">
-                    SMTP_PASS
-                  </code>{" "}
-                  (esa clave de 16 letras).
-                </li>
-                <li>
-                  Opcional:{" "}
-                  <code className="rounded bg-[var(--brand-mist)] px-1">
-                    MAIL_FROM
-                  </code>{" "}
-                  ={" "}
-                  <code className="rounded bg-[var(--brand-mist)] px-1">
-                    Gran Real Hotel &lt;tu@gmail.com&gt;
-                  </code>
-                  .
-                </li>
-              </ol>
-              <p className="mt-3 text-sm text-[var(--brand-muted)]">
-                El dominio Resend abajo es opcional (solo si más adelante quieres
-                correo con marca propia).
+                Invitaciones y comprobantes. Remitente:{" "}
+                {mailStatus?.smtp?.user || "correo del hotel"}
+                {mailStatus?.smtp?.configured ? " · listo" : ""}
               </p>
             </div>
-
-            <div className="rounded-xl border border-[var(--brand-line)] bg-[var(--brand-mist)]/60 px-4 py-3 text-sm">
-              <p>
-                Gmail SMTP:{" "}
-                <strong>
-                  {mailStatus?.smtp?.configured ? "configurado" : "faltan secretos"}
-                </strong>
-                {mailStatus?.smtp?.user ? ` · ${mailStatus.smtp.user}` : ""}
-              </p>
-              <p className="mt-1">
-                Resend:{" "}
-                <strong>
-                  {mailStatus?.resend?.configured
-                    ? "configurado (solo con dominio)"
-                    : "no"}
-                </strong>
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-3 rounded-lg"
-                disabled={mailDomainBusy}
-                onClick={() => sendTestMail()}
-              >
-                Enviar correo de prueba a mi cuenta
-              </Button>
-            </div>
-
-            {(snapshot.mailSettings || mailDomainDetail) && (
-              <div className="rounded-xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
-                <p>
-                  Dominio:{" "}
-                  <strong>
-                    {mailDomainDetail?.name || snapshot.mailSettings?.domain}
-                  </strong>
-                </p>
-                <p className="mt-1">
-                  Estado:{" "}
-                  <strong>
-                    {mailDomainDetail?.status || snapshot.mailSettings?.status}
-                  </strong>
-                </p>
-                <p className="mt-1 text-[var(--brand-muted)]">
-                  Remitente:{" "}
-                  {snapshot.mailSettings?.fromAddress ||
-                    `Gran Real Hotel <noreply@${mailDomainDetail?.name || "tudominio.com"}>`}
-                </p>
-              </div>
-            )}
-
-            <form
-              onSubmit={createMailDomain}
-              className="flex flex-col gap-3 sm:flex-row sm:items-end"
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg"
+              disabled={mailDomainBusy}
+              onClick={() => sendTestMail()}
             >
-              <div className="flex-1 space-y-1.5">
-                <Label>Dominio</Label>
-                <Input
-                  value={mailDomainInput}
-                  onChange={(event) => setMailDomainInput(event.target.value)}
-                  placeholder="granrealhotel.com"
-                  required
-                />
-              </div>
-              <Button
-                type="submit"
-                disabled={mailDomainBusy}
-                className="rounded-lg bg-[var(--brand-deep)]"
-              >
-                {mailDomainBusy ? "Procesando…" : "Agregar en Resend"}
-              </Button>
-            </form>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-lg"
-                disabled={mailDomainBusy || !mailDomainDetail?.id}
-                onClick={() => verifyMailDomain()}
-              >
-                Verificar DNS
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-lg"
-                disabled={mailDomainBusy || !mailDomainDetail?.id}
-                onClick={() => refreshMailDomain()}
-              >
-                Actualizar estado
-              </Button>
-              <a
-                href="https://resend.com/domains"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center rounded-lg border border-[var(--brand-line)] px-3 text-sm font-medium text-[var(--brand-ink)] hover:bg-[var(--brand-mist)]"
-              >
-                Abrir Resend
-              </a>
-            </div>
-
-            {(mailDomainDetail?.records?.length ?? 0) > 0 && (
-              <div className="overflow-x-auto rounded-xl border border-[var(--brand-line)]">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="bg-[var(--brand-mist)] text-[var(--brand-muted)]">
-                    <tr>
-                      <th className="px-3 py-2">Tipo</th>
-                      <th className="px-3 py-2">Nombre</th>
-                      <th className="px-3 py-2">Valor</th>
-                      <th className="px-3 py-2">Estado</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mailDomainDetail!.records!.map((record, index) => (
-                      <tr
-                        key={`${record.type}-${record.name}-${index}`}
-                        className="border-t border-[var(--brand-line)]"
-                      >
-                        <td className="px-3 py-2 font-medium">{record.type}</td>
-                        <td className="px-3 py-2 font-mono">{record.name}</td>
-                        <td className="max-w-[280px] truncate px-3 py-2 font-mono">
-                          {record.priority != null
-                            ? `${record.priority} ${record.value}`
-                            : record.value}
-                        </td>
-                        <td className="px-3 py-2">{record.status || "—"}</td>
-                        <td className="px-3 py-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 rounded-lg px-2"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(
-                                  record.value,
-                                );
-                                notifyOk("Valor DNS copiado", {
-                                  keepInvite: true,
-                                });
-                              } catch {
-                                notifyErr("No se pudo copiar");
-                              }
-                            }}
-                          >
-                            Copiar
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              Enviar prueba
+            </Button>
           </section>
 
           <div className="space-y-3">
-            <p className="text-sm text-[var(--brand-muted)]">
-              Historial de códigos y comprobantes.
-            </p>
             {(snapshot.mailOutbox ?? []).length === 0 ? (
               <div className="rounded-2xl border border-[var(--brand-line)] bg-white p-8 text-center text-[var(--brand-muted)]">
                 Aún no hay correos registrados.
@@ -3636,7 +3335,7 @@ export function AdminPanel({
                         {mail.subject}
                       </p>
                       <p className="text-sm text-[var(--brand-muted)]">
-                        Para {mail.to} · {mail.mode}
+                        Para {mail.to}
                         {mail.delivered ? " · enviado" : " · pendiente"}
                       </p>
                     </div>
