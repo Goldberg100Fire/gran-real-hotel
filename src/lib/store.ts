@@ -1824,6 +1824,33 @@ export async function setStaffActive(
   return toStaffPublic(member);
 }
 
+export async function deleteStaffMember(email: string): Promise<void> {
+  const store = await readStore();
+  const normalized = normalizeEmail(email);
+  if (isOwnerEmail(normalized)) {
+    throw new Error(
+      "No se puede eliminar un jefe definido en ADMIN_ALLOWED_EMAILS",
+    );
+  }
+  const index = store.staffMembers.findIndex(
+    (item) => item.email === normalized,
+  );
+  if (index < 0) throw new Error("Personal no encontrado");
+  store.staffMembers.splice(index, 1);
+  await writeStore(store);
+
+  if (isFirestoreConfigured()) {
+    try {
+      await getDb()
+        .collection(COLLECTIONS.staffMembers)
+        .doc(normalized)
+        .delete();
+    } catch (error) {
+      console.error("No se pudo borrar personal en Firestore:", error);
+    }
+  }
+}
+
 export async function setStaffPassword(
   email: string,
   password: string,

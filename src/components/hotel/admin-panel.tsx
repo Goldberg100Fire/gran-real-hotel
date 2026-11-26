@@ -140,6 +140,11 @@ export function AdminPanel({
   const [staffEmail, setStaffEmail] = useState("");
   const [staffName, setStaffName] = useState("");
   const [staffRole, setStaffRole] = useState<StaffRole>("empleado");
+  const [editingStaffEmail, setEditingStaffEmail] = useState<string | null>(
+    null,
+  );
+  const [editStaffName, setEditStaffName] = useState("");
+  const [editStaffRole, setEditStaffRole] = useState<StaffRole>("empleado");
   const [offerTitle, setOfferTitle] = useState("");
   const [offerDescription, setOfferDescription] = useState("");
   const [offerKind, setOfferKind] = useState<PriceOfferKind>("oferta");
@@ -150,6 +155,7 @@ export function AdminPanel({
   const [offerMinNights, setOfferMinNights] = useState("3");
   const [offerDiscountPercent, setOfferDiscountPercent] = useState("10");
   const [offerPackageNights, setOfferPackageNights] = useState("2");
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeDescription, setNewTypeDescription] = useState("");
@@ -494,6 +500,7 @@ export function AdminPanel({
   async function addStaff(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setInfo(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "POST",
       body: JSON.stringify({
@@ -506,6 +513,18 @@ export function AdminPanel({
     if (!response.ok) {
       setError(data.error || "No se pudo agregar");
       return;
+    }
+    if (data.inviteSent) {
+      setInfo(
+        data.message ||
+          `Se envió el correo a ${staffEmail} con el código para crear su contraseña.`,
+      );
+    } else {
+      setError(
+        data.message ||
+          data.inviteError ||
+          "Personal guardado, pero el correo no se envió. Revisa RESEND_API_KEY y MAIL_FROM en Vercel.",
+      );
     }
     setStaffEmail("");
     setStaffName("");
@@ -529,6 +548,7 @@ export function AdminPanel({
 
   async function authorizeStaffReset(email: string) {
     setError(null);
+    setInfo(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "PATCH",
       body: JSON.stringify({ email, authorizeReset: true }),
@@ -538,7 +558,111 @@ export function AdminPanel({
       setError(data.error || "No se pudo autorizar");
       return;
     }
+    setInfo(`Reset autorizado 24h para ${email}`);
     await loadSummary();
+  }
+
+  async function resendStaffInvite(email: string) {
+    setError(null);
+    setInfo(null);
+    const response = await adminFetch("/api/admin/staff", {
+      method: "PATCH",
+      body: JSON.stringify({ email, resendInvite: true }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo reenviar el correo");
+      return;
+    }
+    setInfo(data.message || `Correo reenviado a ${email}`);
+    await loadSummary();
+  }
+
+  function startEditStaff(member: StaffMemberPublic) {
+    setEditingStaffEmail(member.email);
+    setEditStaffName(member.name);
+    setEditStaffRole(member.role);
+    setError(null);
+    setInfo(null);
+  }
+
+  async function saveEditStaff(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingStaffEmail) return;
+    setError(null);
+    const response = await adminFetch("/api/admin/staff", {
+      method: "PATCH",
+      body: JSON.stringify({
+        email: editingStaffEmail,
+        name: editStaffName,
+        role: editStaffRole,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo guardar");
+      return;
+    }
+    setInfo("Personal actualizado");
+    setEditingStaffEmail(null);
+    await loadSummary();
+  }
+
+  async function removeStaff(email: string) {
+    const ok = window.confirm(`¿Eliminar a ${email} del personal?`);
+    if (!ok) return;
+    setError(null);
+    const response = await adminFetch("/api/admin/staff", {
+      method: "DELETE",
+      body: JSON.stringify({ email }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setError(data.error || "No se pudo eliminar");
+      return;
+    }
+    setInfo(`Se eliminó a ${email}`);
+    if (editingStaffEmail === email) setEditingStaffEmail(null);
+    await loadSummary();
+  }
+
+  function resetOfferForm() {
+    setEditingOfferId(null);
+    setOfferTitle("");
+    setOfferDescription("");
+    setOfferKind("oferta");
+    setOfferStart("");
+    setOfferEnd("");
+    setOfferPriority(1);
+    setOfferMinNights("3");
+    setOfferDiscountPercent("10");
+    setOfferPackageNights("2");
+    setOfferPrices({});
+  }
+
+  function startEditOffer(offer: PriceOffer) {
+    setEditingOfferId(offer.id);
+    setOfferTitle(offer.title);
+    setOfferDescription(offer.description || "");
+    setOfferKind(
+      offer.kind === "fiesta" || offer.kind === "oferta" ? offer.kind : "oferta",
+    );
+    setOfferStart(offer.startDate);
+    setOfferEnd(offer.endDate);
+    setOfferPriority(offer.priority ?? 1);
+    setOfferMinNights(String(offer.minNights ?? 3));
+    setOfferDiscountPercent(String(offer.discountPercent ?? 10));
+    setOfferPackageNights(String(offer.packageNights ?? 2));
+    const prices: Record<string, string> = {};
+    const source =
+      offer.kind === "fiesta" ? offer.packagePrices || {} : offer.prices || {};
+    for (const [id, value] of Object.entries(source)) {
+      prices[id] = String(value);
+    }
+    setOfferPrices(prices);
+    setError(null);
+    setInfo(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function addOffer(event: React.FormEvent) {
@@ -550,43 +674,46 @@ export function AdminPanel({
       const amount = Number(value);
       if (Number.isFinite(amount) && amount > 0) prices[id] = amount;
     }
+    const payload = {
+      title: offerTitle,
+      description: offerDescription,
+      kind: offerKind,
+      startDate: offerStart,
+      endDate: offerEnd,
+      branchId: activeBranchId,
+      priority: offerPriority,
+      prices: offerKind === "oferta" || offerKind === "fiesta" ? {} : prices,
+      minNights: offerKind === "oferta" ? Number(offerMinNights) : undefined,
+      discountPercent:
+        offerKind === "oferta" ? Number(offerDiscountPercent) : undefined,
+      packageNights:
+        offerKind === "fiesta" ? Number(offerPackageNights) : undefined,
+      packagePrices: offerKind === "fiesta" ? prices : undefined,
+      active: true,
+    };
+
     const response = await adminFetch("/api/admin/offers", {
-      method: "POST",
-      body: JSON.stringify({
-        title: offerTitle,
-        description: offerDescription,
-        kind: offerKind,
-        startDate: offerStart,
-        endDate: offerEnd,
-        branchId: activeBranchId,
-        priority: offerPriority,
-        prices: offerKind === "oferta" || offerKind === "fiesta" ? {} : prices,
-        minNights:
-          offerKind === "oferta" ? Number(offerMinNights) : undefined,
-        discountPercent:
-          offerKind === "oferta" ? Number(offerDiscountPercent) : undefined,
-        packageNights:
-          offerKind === "fiesta" ? Number(offerPackageNights) : undefined,
-        packagePrices: offerKind === "fiesta" ? prices : undefined,
-        active: true,
-      }),
+      method: editingOfferId ? "PATCH" : "POST",
+      body: JSON.stringify(
+        editingOfferId ? { id: editingOfferId, ...payload } : payload,
+      ),
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo crear la oferta");
+      setError(
+        data.error ||
+          (editingOfferId
+            ? "No se pudo actualizar la oferta"
+            : "No se pudo crear la oferta"),
+      );
       return;
     }
-    setInfo("Oferta publicada: el público ya puede verla");
-    setOfferTitle("");
-    setOfferDescription("");
-    setOfferKind("oferta");
-    setOfferStart("");
-    setOfferEnd("");
-    setOfferPriority(1);
-    setOfferMinNights("3");
-    setOfferDiscountPercent("10");
-    setOfferPackageNights("2");
-    setOfferPrices({});
+    setInfo(
+      editingOfferId
+        ? "Oferta actualizada"
+        : "Oferta publicada: el público ya puede verla",
+    );
+    resetOfferForm();
     await loadSummary();
   }
 
@@ -922,13 +1049,7 @@ export function AdminPanel({
           ] as const)
         : []),
       ...(permissions.manageStaff ? [["personal", "Personal"] as const] : []),
-      ...(permissions.manageStaff
-        ? ([
-            ["reservas", "Registro"],
-            ["clientes", "Clientes"],
-            ["correos", "Correos"],
-          ] as const)
-        : [["reservas", "Registro"] as const]),
+      ...(permissions.manageStaff ? [["correos", "Correos"] as const] : []),
     ] as const
   );
 
@@ -1948,7 +2069,7 @@ export function AdminPanel({
           >
             <div>
               <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
-                Nueva oferta o fiesta
+                {editingOfferId ? "Modificar oferta" : "Nueva oferta o fiesta"}
               </h3>
               <p className="mt-1 text-sm text-[var(--brand-muted)]">
                 <strong>Oferta:</strong> descuento por cantidad de noches.{" "}
@@ -2093,9 +2214,21 @@ export function AdminPanel({
                 }
               />
             </div>
-            <Button type="submit" className="rounded-lg bg-[var(--brand-deep)]">
-              Publicar en la web
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" className="rounded-lg bg-[var(--brand-deep)]">
+                {editingOfferId ? "Guardar cambios" : "Publicar en la web"}
+              </Button>
+              {editingOfferId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={() => resetOfferForm()}
+                >
+                  Cancelar edición
+                </Button>
+              ) : null}
+            </div>
           </form>
 
           <div className="space-y-4">
@@ -2118,6 +2251,7 @@ export function AdminPanel({
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand-gold)]">
                         {PRICE_OFFER_KIND_LABELS[offer.kind]}
                         {!offer.active ? " · pausada" : " · pública"}
+                        {editingOfferId === offer.id ? " · editando" : ""}
                       </p>
                       <h4 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-extrabold text-[var(--brand-ink)]">
                         {offer.title}
@@ -2147,6 +2281,14 @@ export function AdminPanel({
                         type="button"
                         variant="outline"
                         className="rounded-lg"
+                        onClick={() => startEditOffer(offer)}
+                      >
+                        Modificar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
                         onClick={() =>
                           patchOffer(offer.id, { active: !offer.active }).catch(
                             (err) => setError(err.message),
@@ -2159,11 +2301,21 @@ export function AdminPanel({
                         type="button"
                         variant="outline"
                         className="rounded-lg text-rose-700"
-                        onClick={() =>
-                          removeOffer(offer.id).catch((err) =>
-                            setError(err.message),
-                          )
-                        }
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `¿Eliminar la oferta “${offer.title}”?`,
+                            )
+                          ) {
+                            return;
+                          }
+                          removeOffer(offer.id)
+                            .then(() => {
+                              if (editingOfferId === offer.id) resetOfferForm();
+                              setInfo("Oferta eliminada");
+                            })
+                            .catch((err) => setError(err.message));
+                        }}
                       >
                         Eliminar
                       </Button>
@@ -2708,9 +2860,9 @@ export function AdminPanel({
       {tab === "personal" && permissions.manageStaff && (
         <div className="space-y-6">
           <p className="text-sm text-[var(--brand-muted)]">
-            Solo tú autorizas correos. Cada persona crea su propia contraseña en
-            el primer acceso. La recuperación automática es solo para el jefe;
-            si un empleado olvida la clave, debe pedirte autorización aquí.
+            Al autorizar un correo se envía la invitación con código para crear
+            la contraseña en /personal. Si no llega, usa “Reenviar correo”. Si
+            olvidó la clave, autoriza el reset.
           </p>
           {(snapshot.ownersFromSecrets ?? []).length > 0 && (
             <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm">
@@ -2720,7 +2872,7 @@ export function AdminPanel({
           )}
           <form
             onSubmit={addStaff}
-            className="grid gap-3 rounded-2xl bg-white p-5 ring-1 ring-[var(--brand-line)] md:grid-cols-4"
+            className="grid gap-3 rounded-2xl border border-[var(--brand-line)] bg-white p-5 md:grid-cols-4"
           >
             <div className="space-y-2">
               <Label>Correo del empleado</Label>
@@ -2744,7 +2896,7 @@ export function AdminPanel({
             <div className="space-y-2">
               <Label>Rol</Label>
               <select
-                className="h-10 w-full rounded-lg border px-3 text-sm"
+                className={selectClass}
                 value={staffRole}
                 onChange={(event) =>
                   setStaffRole(event.target.value as StaffRole)
@@ -2759,12 +2911,63 @@ export function AdminPanel({
                 type="submit"
                 className="w-full rounded-lg bg-[var(--brand-deep)]"
               >
-                Autorizar correo
+                Autorizar y enviar correo
               </Button>
             </div>
           </form>
 
-          <div className="overflow-x-auto rounded-2xl bg-white ring-1 ring-[var(--brand-line)]">
+          {editingStaffEmail && (
+            <form
+              onSubmit={saveEditStaff}
+              className="space-y-3 rounded-2xl border border-[var(--brand-line)] bg-[var(--brand-mist)]/50 p-5"
+            >
+              <p className="text-sm font-semibold text-[var(--brand-ink)]">
+                Modificar · {editingStaffEmail}
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nombre</Label>
+                  <Input
+                    value={editStaffName}
+                    onChange={(event) => setEditStaffName(event.target.value)}
+                    required
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Rol</Label>
+                  <select
+                    className={selectClass}
+                    value={editStaffRole}
+                    onChange={(event) =>
+                      setEditStaffRole(event.target.value as StaffRole)
+                    }
+                  >
+                    <option value="empleado">Empleado</option>
+                    <option value="jefe">Jefe</option>
+                  </select>
+                </div>
+                <div className="flex items-end gap-2">
+                  <Button
+                    type="submit"
+                    className="rounded-lg bg-[var(--brand-deep)]"
+                  >
+                    Guardar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-lg"
+                    onClick={() => setEditingStaffEmail(null)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          <div className="overflow-x-auto rounded-2xl border border-[var(--brand-line)] bg-white">
             <table className="min-w-full text-left text-sm">
               <thead className="border-b bg-[var(--brand-mist)] text-[var(--brand-muted)]">
                 <tr>
@@ -2808,6 +3011,28 @@ export function AdminPanel({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-lg"
+                          onClick={() => startEditStaff(member)}
+                        >
+                          Modificar
+                        </Button>
+                        {!member.hasPassword && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-lg"
+                            onClick={() =>
+                              resendStaffInvite(member.email).catch((err) =>
+                                setError(err.message),
+                              )
+                            }
+                          >
+                            Reenviar correo
+                          </Button>
+                        )}
                         {member.role === "empleado" &&
                           (member.resetPending || member.hasPassword) && (
                             <Button
@@ -2833,6 +3058,20 @@ export function AdminPanel({
                         >
                           {member.active ? "Desactivar" : "Activar"}
                         </Button>
+                        {member.email !== adminEmail && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-lg text-rose-700"
+                            onClick={() =>
+                              removeStaff(member.email).catch((err) =>
+                                setError(err.message),
+                              )
+                            }
+                          >
+                            Eliminar
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
