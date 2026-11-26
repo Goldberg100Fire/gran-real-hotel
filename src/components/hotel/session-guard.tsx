@@ -35,30 +35,31 @@ export function SessionGuard({
       }, idleMs);
     }
 
-    const events: Array<keyof WindowEventMap> = [
+    const windowEvents = [
       "mousemove",
       "mousedown",
       "keydown",
       "touchstart",
       "scroll",
-      "visibilitychange",
-    ];
+    ] as const;
 
     const onActivity = () => {
       if (document.visibilityState === "hidden") return;
       resetTimer();
     };
 
-    for (const event of events) {
+    for (const event of windowEvents) {
       window.addEventListener(event, onActivity, { passive: true });
     }
+    document.addEventListener("visibilitychange", onActivity);
     resetTimer();
 
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
-      for (const event of events) {
+      for (const event of windowEvents) {
         window.removeEventListener(event, onActivity);
       }
+      document.removeEventListener("visibilitychange", onActivity);
     };
   }, [idleMinutes, router]);
 
