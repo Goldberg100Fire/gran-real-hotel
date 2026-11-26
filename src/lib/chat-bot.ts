@@ -10,6 +10,8 @@ import type { HotelBranch, PriceOffer, RoomType, Service } from "./types";
 export type ChatReply = {
   reply: string;
   suggestions?: string[];
+  /** Si está presente, el chat debe abrir esta URL en una pestaña nueva. */
+  openUrl?: string;
 };
 
 export type ChatContext = {
@@ -126,6 +128,24 @@ export function answerHotelQuestion(
     };
   }
 
+  // Antes que "ubicación": "Abrir mapa" debe devolver solo el enlace, no el texto largo.
+  if (
+    includesAny(message, [
+      "abrir mapa",
+      "ver mapa",
+      "link mapa",
+      "enlace mapa",
+      "google maps",
+      "ver en google",
+    ])
+  ) {
+    return {
+      reply: `Abre el mapa aquí: ${HOTEL.mapsUrl}`,
+      suggestions: ["Teléfono", "Reservar", "Precios", "Habitaciones"],
+      openUrl: HOTEL.mapsUrl,
+    };
+  }
+
   if (
     includesAny(message, [
       "donde",
@@ -133,9 +153,6 @@ export function answerHotelQuestion(
       "direccion",
       "otuzco",
       "llegar",
-      "mapa",
-      "maps",
-      "google",
       "como llego",
       "address",
       "sede",
@@ -145,13 +162,6 @@ export function answerHotelQuestion(
     return {
       reply: `Estamos en ${fullAddress}, ${branch?.country ?? HOTEL.country}. ${mapsLine()}. Si vienes de Trujillo u otra ciudad, llega a Otuzco y busca Calle Tacna Nº 542. ¿Necesitas el teléfono para preguntar cómo llegar?`,
       suggestions: ["Abrir mapa", "Teléfono", "Reservar", "Precios"],
-    };
-  }
-
-  if (includesAny(message, ["abrir mapa", "ver mapa", "link mapa", "enlace mapa"])) {
-    return {
-      reply: `Aquí tienes la ubicación: ${HOTEL.mapsUrl}`,
-      suggestions: ["Reservar", "Precios", "Habitaciones"],
     };
   }
 

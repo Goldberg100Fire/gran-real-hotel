@@ -59,9 +59,15 @@ export function PublicChat() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, open, pending]);
 
+  function openMaps() {
+    window.open(HOTEL.mapsUrl, "_blank", "noopener,noreferrer");
+  }
+
   async function sendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed || pending) return;
+
+    const wantsMap = /abrir\s+mapa|ver\s+mapa|ver\s+en\s+google/i.test(trimmed);
 
     setOpen(true);
     setError(null);
@@ -72,6 +78,11 @@ export function PublicChat() {
       { id: `u-${Date.now()}`, role: "user", text: trimmed },
     ]);
 
+    // Abrir Maps al tocar "Abrir mapa" (no solo responder con texto).
+    if (wantsMap) {
+      openMaps();
+    }
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -81,6 +92,7 @@ export function PublicChat() {
       const data = (await response.json()) as {
         reply?: string;
         suggestions?: string[];
+        openUrl?: string;
         error?: string;
       };
 
@@ -88,16 +100,24 @@ export function PublicChat() {
         throw new Error(data.error || "No se pudo responder");
       }
 
+      if (data.openUrl && !wantsMap) {
+        window.open(data.openUrl, "_blank", "noopener,noreferrer");
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: `b-${Date.now()}`,
           role: "bot",
-          text: data.reply || "No tengo esa información ahora.",
+          text: wantsMap
+            ? `Te abrí Google Maps en una pestaña nueva. Si no se abrió, toca: ${HOTEL.mapsUrl}`
+            : data.reply || "No tengo esa información ahora.",
         },
       ]);
       if (data.suggestions?.length) {
         setSuggestions(data.suggestions);
+      } else if (wantsMap) {
+        setSuggestions(["Teléfono", "Reservar", "Precios", "Habitaciones"]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error de conexión");
