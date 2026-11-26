@@ -8,7 +8,7 @@ import {
 
 export type SendMailResult = {
   delivered: boolean;
-  mode: "resend";
+  mode: "resend" | "demo";
   messageId: string;
 };
 
@@ -22,6 +22,39 @@ async function persistOutbox(input: {
 }) {
   const { appendMailOutbox } = await import("./store");
   return appendMailOutbox(input);
+}
+
+/** Traduce errores técnicos de Resend a mensajes claros para el dueño. */
+export function humanizeMailError(raw: unknown): string {
+  const text =
+    raw instanceof Error
+      ? raw.message
+      : typeof raw === "string"
+        ? raw
+        : "No se pudo enviar el correo";
+
+  if (/only send testing emails to your own email/i.test(text)) {
+    return (
+      "Resend está en modo prueba: solo puede enviar a tu propio correo. " +
+      "Verifica un dominio en resend.com/domains y cambia MAIL_FROM a un correo de ese dominio. " +
+      "Mientras tanto, comparte el código de acceso con el empleado manualmente."
+    );
+  }
+  if (/domain is not verified|not verified/i.test(text)) {
+    return (
+      "El dominio de MAIL_FROM no está verificado en Resend. " +
+      "Verifícalo en resend.com/domains o usa un remitente del dominio verificado."
+    );
+  }
+  if (/RESEND_API_KEY|MAIL_FROM|Correo no configurado/i.test(text)) {
+    return "El correo no está configurado (RESEND_API_KEY / MAIL_FROM).";
+  }
+  if (/No se pudo enviar el correo:/i.test(text)) {
+    return text.replace(/^No se pudo enviar el correo:\s*/i, "").length > 180
+      ? "No se pudo enviar el correo. Revisa Resend (dominio y MAIL_FROM)."
+      : text;
+  }
+  return text;
 }
 
 export async function sendEmail(input: {
@@ -55,7 +88,7 @@ export async function sendEmail(input: {
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(`No se pudo enviar el correo: ${detail}`);
+    throw new Error(humanizeMailError(`No se pudo enviar el correo: ${detail}`));
   }
 
   const data = (await response.json()) as { id?: string };
@@ -76,6 +109,40 @@ export async function sendEmail(input: {
   }
 
   return { delivered: true, mode: "resend", messageId };
+}
+
+/** Guarda la invitación en Correos aunque Resend no la haya entregado. */
+export async function recordUndeliveredInvite(input: {
+  to: string;
+  name: string;
+  code: string;
+  loginUrl: string;
+  reason: string;
+}) {
+  const name = input.name.trim() || "equipo";
+  const subject = `Crea tu acceso · ${HOTEL.name} (pendiente de envío)`;
+  const text = [
+    `Hola ${name},`,
+    ``,
+    `Te autorizaron como personal de ${HOTEL.name}.`,
+    `Código: ${input.code}`,
+    `Enlace: ${input.loginUrl}`,
+    ``,
+    `Motivo: ${input.reason}`,
+    `Comparte este código con el empleado. Válido 10 minutos.`,
+  ].join("\n");
+  try {
+    await persistOutbox({
+      to: input.to,
+      subject,
+      html: `<pre style="font-family:Georgia,serif;white-space:pre-wrap">${text}</pre>`,
+      text,
+      mode: "demo",
+      delivered: false,
+    });
+  } catch (error) {
+    console.error("No se pudo guardar la invitación en el outbox:", error);
+  }
 }
 
 export function buildReservationReceipt(input: {

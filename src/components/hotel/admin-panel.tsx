@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,8 @@ import {
   type StaffRole,
   type UserRole,
 } from "@/lib/types";
+
+type ToastTone = "success" | "warning" | "error";
 
 interface Snapshot {
   branches: HotelBranch[];
@@ -97,7 +99,11 @@ export function AdminPanel({
   role: UserRole;
 }) {
   const router = useRouter();
+  const toastRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<ToastTone>("success");
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [inviteLoginUrl, setInviteLoginUrl] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [tab, setTab] = useState<
@@ -261,7 +267,54 @@ export function AdminPanel({
     );
   }, [loadSummary]);
 
-  async function patchRoom(id: string, patch: Record<string, unknown>) {
+  useEffect(() => {
+    if (!info || toastTone === "error") return;
+    const timer = window.setTimeout(() => {
+      setInfo(null);
+      setInviteCode(null);
+      setInviteLoginUrl(null);
+    }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [info, toastTone, inviteCode]);
+
+  function flashToast(tone: ToastTone, message: string) {
+    if (tone === "error") {
+      setInfo(null);
+      setToastTone("error");
+      setError(message);
+    } else {
+      setError(null);
+      setToastTone(tone);
+      setInfo(message);
+    }
+    requestAnimationFrame(() => {
+      toastRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function notifyOk(message: string, options?: { keepInvite?: boolean }) {
+    if (!options?.keepInvite) {
+      setInviteCode(null);
+      setInviteLoginUrl(null);
+    }
+    flashToast("success", message);
+  }
+
+  function notifyWarn(message: string) {
+    flashToast("warning", message);
+  }
+
+  function notifyErr(message: string) {
+    setInviteCode(null);
+    setInviteLoginUrl(null);
+    flashToast("error", message);
+  }
+
+  async function patchRoom(
+    id: string,
+    patch: Record<string, unknown>,
+    options?: { silent?: boolean; okMessage?: string },
+  ) {
     const response = await adminFetch("/api/admin/rooms", {
       method: "PATCH",
       body: JSON.stringify({ id, ...patch }),
@@ -269,6 +322,16 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+    if (options?.silent) return;
+    if (options?.okMessage) {
+      notifyOk(options.okMessage);
+      return;
+    }
+    if (typeof patch.status === "string") {
+      notifyOk(
+        `Listo: habitación marcada como ${ROOM_STATUS_LABELS[patch.status as RoomStatus] || patch.status}`,
+      );
+    }
   }
 
   function startEditRoom(room: Room) {
@@ -296,17 +359,22 @@ export function AdminPanel({
     setError(null);
     setInfo(null);
     try {
-      await patchRoom(editingRoomId, {
-        number: editRoom.number.trim(),
-        floor: Number(editRoom.floor),
-        roomTypeId: editRoom.roomTypeId,
-        status: editRoom.status,
-        notes: editRoom.notes,
-      });
-      setInfo(`Habitación ${editRoom.number.trim()} actualizada`);
+      await patchRoom(
+        editingRoomId,
+        {
+          number: editRoom.number.trim(),
+          floor: Number(editRoom.floor),
+          roomTypeId: editRoom.roomTypeId,
+          status: editRoom.status,
+          notes: editRoom.notes,
+        },
+        {
+          okMessage: `Listo: habitación ${editRoom.number.trim()} actualizada`,
+        },
+      );
       cancelEditRoom();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar");
+      notifyErr(err instanceof Error ? err.message : "No se pudo guardar");
     } finally {
       setRoomBusy(false);
     }
@@ -323,18 +391,22 @@ export function AdminPanel({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo eliminar");
-      setInfo("Habitación eliminada");
+      notifyOk("Listo: habitación eliminada");
       setPendingDeleteRoomId(null);
       if (editingRoomId === id) cancelEditRoom();
       await loadSummary();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar");
+      notifyErr(err instanceof Error ? err.message : "No se pudo eliminar");
     } finally {
       setRoomBusy(false);
     }
   }
 
-  async function patchRoomType(id: string, patch: Record<string, unknown>) {
+  async function patchRoomType(
+    id: string,
+    patch: Record<string, unknown>,
+    options?: { silent?: boolean; okMessage?: string },
+  ) {
     const response = await adminFetch("/api/admin/room-types", {
       method: "PATCH",
       body: JSON.stringify({ id, ...patch }),
@@ -342,6 +414,8 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+    if (options?.silent) return;
+    notifyOk(options?.okMessage || "Listo: tipo de habitación actualizado");
   }
 
   async function uploadRoomPhoto(typeId: string, file: File) {
@@ -363,6 +437,7 @@ export function AdminPanel({
         throw new Error(data.error || "No se pudo subir la foto");
       }
       await loadSummary();
+      notifyOk("Listo: foto de habitación actualizada");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No se pudo subir la foto";
@@ -374,7 +449,7 @@ export function AdminPanel({
             body: JSON.stringify({ roomTypeId: typeId }),
           });
           await loadSummary();
-          setError(
+          notifyErr(
             `${message}. Se eliminó la foto subida para que puedas intentar de nuevo.`,
           );
           return;
@@ -382,7 +457,7 @@ export function AdminPanel({
           // ignore cleanup errors
         }
       }
-      setError(
+      notifyErr(
         `${message}. Puedes usar “Eliminar foto subida” si necesitas limpiarla.`,
       );
     }
@@ -489,7 +564,7 @@ export function AdminPanel({
         setError(data.error || "No se pudo crear");
         return;
       }
-      setInfo(`Habitación ${newRoomNumber.trim()} agregada`);
+      notifyOk(`Listo: habitación ${newRoomNumber.trim()} agregada`);
       setNewRoomNumber("");
       await loadSummary();
     } finally {
@@ -501,6 +576,7 @@ export function AdminPanel({
     event.preventDefault();
     setError(null);
     setInfo(null);
+    setInviteCode(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "POST",
       body: JSON.stringify({
@@ -511,19 +587,24 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo agregar");
+      notifyErr(data.error || "No se pudo agregar");
       return;
     }
+    if (data.inviteCode) {
+      setInviteCode(String(data.inviteCode));
+      setInviteLoginUrl(
+        typeof data.loginUrl === "string" ? data.loginUrl : null,
+      );
+    }
     if (data.inviteSent) {
-      setInfo(
+      notifyOk(
         data.message ||
-          `Se envió el correo a ${staffEmail} con el código para crear su contraseña.`,
+          `Listo: se envió el correo a ${staffEmail} con el código.`,
       );
     } else {
-      setError(
+      notifyWarn(
         data.message ||
-          data.inviteError ||
-          "Personal guardado, pero el correo no se envió. Revisa RESEND_API_KEY y MAIL_FROM en Vercel.",
+          "Personal autorizado. El correo no salió; comparte el código de abajo.",
       );
     }
     setStaffEmail("");
@@ -540,9 +621,15 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo actualizar");
+      notifyErr(data.error || "No se pudo actualizar");
       return;
     }
+    notifyOk(
+      data.message ||
+        (active
+          ? `Listo: ${email} quedó activo`
+          : `Listo: ${email} quedó desactivado`),
+    );
     await loadSummary();
   }
 
@@ -555,26 +642,40 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo autorizar");
+      notifyErr(data.error || "No se pudo autorizar");
       return;
     }
-    setInfo(`Reset autorizado 24h para ${email}`);
+    notifyOk(data.message || `Listo: reset autorizado 24h para ${email}`);
     await loadSummary();
   }
 
   async function resendStaffInvite(email: string) {
     setError(null);
     setInfo(null);
+    setInviteCode(null);
     const response = await adminFetch("/api/admin/staff", {
       method: "PATCH",
       body: JSON.stringify({ email, resendInvite: true }),
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo reenviar el correo");
+      notifyErr(data.error || "No se pudo reenviar el correo");
       return;
     }
-    setInfo(data.message || `Correo reenviado a ${email}`);
+    if (data.inviteCode) {
+      setInviteCode(String(data.inviteCode));
+      setInviteLoginUrl(
+        typeof data.loginUrl === "string" ? data.loginUrl : null,
+      );
+    }
+    if (data.inviteSent) {
+      notifyOk(data.message || `Listo: correo reenviado a ${email}`);
+    } else {
+      notifyWarn(
+        data.message ||
+          "El correo no salió. Comparte el código de abajo con el empleado.",
+      );
+    }
     await loadSummary();
   }
 
@@ -600,10 +701,10 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo guardar");
+      notifyErr(data.error || "No se pudo guardar");
       return;
     }
-    setInfo("Personal actualizado");
+    notifyOk(data.message || "Listo: personal actualizado");
     setEditingStaffEmail(null);
     await loadSummary();
   }
@@ -618,10 +719,10 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo eliminar");
+      notifyErr(data.error || "No se pudo eliminar");
       return;
     }
-    setInfo(`Se eliminó a ${email}`);
+    notifyOk(data.message || `Listo: se eliminó a ${email}`);
     if (editingStaffEmail === email) setEditingStaffEmail(null);
     await loadSummary();
   }
@@ -700,7 +801,7 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(
+      notifyErr(
         data.error ||
           (editingOfferId
             ? "No se pudo actualizar la oferta"
@@ -708,10 +809,10 @@ export function AdminPanel({
       );
       return;
     }
-    setInfo(
+    notifyOk(
       editingOfferId
-        ? "Oferta actualizada"
-        : "Oferta publicada: el público ya puede verla",
+        ? "Listo: oferta actualizada"
+        : "Listo: oferta publicada en la web",
     );
     resetOfferForm();
     await loadSummary();
@@ -725,6 +826,13 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+    notifyOk(
+      typeof patch.active === "boolean"
+        ? patch.active
+          ? "Listo: oferta activada"
+          : "Listo: oferta pausada"
+        : "Listo: oferta actualizada",
+    );
   }
 
   async function removeOffer(id: string) {
@@ -735,6 +843,7 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al eliminar");
     await loadSummary();
+    notifyOk("Listo: oferta eliminada");
   }
 
   async function addBranch(event: React.FormEvent) {
@@ -769,8 +878,8 @@ export function AdminPanel({
         setError(data.error || "No se pudo crear la sucursal");
         return;
       }
-      setInfo(
-        `Sucursal “${data.branch?.city || branchCity}” creada con su foto. Ahora agrega habitaciones de esa sede.`,
+      notifyOk(
+        `Listo: sucursal “${data.branch?.city || branchCity}” creada con su foto. Ahora agrega habitaciones de esa sede.`,
       );
       setBranchName("");
       setBranchCity("");
@@ -787,7 +896,11 @@ export function AdminPanel({
     }
   }
 
-  async function patchBranch(id: string, patch: Record<string, unknown>) {
+  async function patchBranch(
+    id: string,
+    patch: Record<string, unknown>,
+    options?: { silent?: boolean; okMessage?: string },
+  ) {
     const response = await adminFetch("/api/admin/branches", {
       method: "PATCH",
       body: JSON.stringify({ id, ...patch }),
@@ -795,6 +908,15 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar sede");
     await loadSummary();
+    if (options?.silent) return;
+    notifyOk(
+      options?.okMessage ||
+        (typeof patch.active === "boolean"
+          ? patch.active
+            ? "Listo: sucursal activada"
+            : "Listo: sucursal pausada"
+          : "Listo: sucursal actualizada"),
+    );
   }
 
   function startEditBranch(branch: HotelBranch) {
@@ -846,7 +968,7 @@ export function AdminPanel({
         setError(data.error || "No se pudo guardar la sede");
         return;
       }
-      setInfo("Sucursal actualizada");
+      notifyOk("Listo: sucursal actualizada");
       setEditingBranchId(null);
       setEditBranchHeroFile(null);
       await loadSummary();
@@ -873,7 +995,7 @@ export function AdminPanel({
         setError(data.error || "No se pudo eliminar la sede");
         return;
       }
-      setInfo(`Sucursal “${city}” eliminada`);
+      notifyOk(`Listo: sucursal “${city}” eliminada`);
       if (editingBranchId === id) setEditingBranchId(null);
       if (activeBranchId === id) {
         const fallback =
@@ -903,7 +1025,7 @@ export function AdminPanel({
       setError(data.error || "No se pudo eliminar el tipo");
       return;
     }
-    setInfo(`Tipo “${name}” eliminado`);
+    notifyOk(`Listo: tipo “${name}” eliminado`);
     await loadSummary();
   }
 
@@ -939,7 +1061,7 @@ export function AdminPanel({
       if (createdId && newTypePhotoFile) {
         await uploadRoomPhoto(createdId, newTypePhotoFile);
       }
-      setInfo(`Tipo “${newTypeName}” creado con su foto`);
+      notifyOk(`Listo: tipo “${newTypeName}” creado con su foto`);
       setNewTypeName("");
       setNewTypeDescription("");
       setNewTypePrice("150");
@@ -975,11 +1097,12 @@ export function AdminPanel({
     });
     const data = await response.json();
     if (!response.ok) {
-      setError(data.error || "No se pudo crear el servicio");
+      notifyErr(data.error || "No se pudo crear el servicio");
       return;
     }
     setNewServiceName("");
     setNewServiceDescription("");
+    notifyOk(`Listo: servicio “${data.service?.name || newServiceName}” creado`);
     await loadSummary();
   }
 
@@ -991,6 +1114,7 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al actualizar");
     await loadSummary();
+    notifyOk("Listo: servicio actualizado");
   }
 
   async function removeService(id: string) {
@@ -1001,6 +1125,7 @@ export function AdminPanel({
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Error al eliminar");
     await loadSummary();
+    notifyOk("Listo: servicio eliminado");
   }
 
   if (!snapshot) {
@@ -1141,15 +1266,66 @@ export function AdminPanel({
         ))}
       </div>
 
-      {error && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
-          {error}
-        </p>
-      )}
-      {info && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-100">
-          {info}
-        </p>
+      {(error || info || inviteCode) && (
+        <div
+          ref={toastRef}
+          role="status"
+          aria-live="polite"
+          className={`sticky top-3 z-40 space-y-3 rounded-2xl px-4 py-3 text-sm shadow-lg ring-1 ${
+            error || toastTone === "error"
+              ? "bg-red-50 text-red-800 ring-red-200"
+              : toastTone === "warning"
+                ? "bg-amber-50 text-amber-950 ring-amber-200"
+                : "bg-emerald-50 text-emerald-950 ring-emerald-200"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-medium leading-relaxed">{error || info}</p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-semibold uppercase tracking-wide opacity-70 hover:opacity-100"
+              onClick={() => {
+                setError(null);
+                setInfo(null);
+                setInviteCode(null);
+                setInviteLoginUrl(null);
+              }}
+            >
+              Cerrar
+            </button>
+          </div>
+          {inviteCode ? (
+            <div className="rounded-xl bg-white/80 px-4 py-3 ring-1 ring-black/5">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--brand-muted)]">
+                Código para el empleado
+              </p>
+              <p className="mt-1 font-mono text-3xl font-bold tracking-[0.2em] text-[var(--brand-ink)]">
+                {inviteCode}
+              </p>
+              <p className="mt-2 text-xs text-[var(--brand-muted)]">
+                Válido 10 minutos. Entrar en{" "}
+                {inviteLoginUrl || "/personal"} → Crear contraseña.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(inviteCode);
+                      notifyOk("Código copiado", { keepInvite: true });
+                    } catch {
+                      notifyErr("No se pudo copiar el código");
+                    }
+                  }}
+                >
+                  Copiar código
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       )}
 
       <section className="overflow-hidden rounded-2xl border border-[var(--brand-line)] bg-white shadow-[0_18px_40px_-34px_rgba(44,36,30,0.55)]">
@@ -2312,9 +2488,8 @@ export function AdminPanel({
                           removeOffer(offer.id)
                             .then(() => {
                               if (editingOfferId === offer.id) resetOfferForm();
-                              setInfo("Oferta eliminada");
                             })
-                            .catch((err) => setError(err.message));
+                            .catch((err) => notifyErr(err.message));
                         }}
                       >
                         Eliminar
@@ -2860,9 +3035,9 @@ export function AdminPanel({
       {tab === "personal" && permissions.manageStaff && (
         <div className="space-y-6">
           <p className="text-sm text-[var(--brand-muted)]">
-            Al autorizar un correo se envía la invitación con código para crear
-            la contraseña en /personal. Si no llega, usa “Reenviar correo”. Si
-            olvidó la clave, autoriza el reset.
+            Al autorizar se intenta enviar el correo con el código. Si Resend
+            está en modo prueba (sin dominio verificado), verás el código aquí
+            para compartirlo. El empleado entra a /personal → Crear contraseña.
           </p>
           {(snapshot.ownersFromSecrets ?? []).length > 0 && (
             <div className="rounded-2xl bg-[var(--brand-mist)] px-4 py-3 text-sm">

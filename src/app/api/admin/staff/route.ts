@@ -9,7 +9,11 @@ import {
   requireOwner,
 } from "@/lib/auth";
 import { assertCsrf, csrfErrorResponse } from "@/lib/csrf";
-import { sendStaffInviteEmail } from "@/lib/mail";
+import {
+  humanizeMailError,
+  recordUndeliveredInvite,
+  sendStaffInviteEmail,
+} from "@/lib/mail";
 import {
   authorizeStaffPasswordReset,
   deleteStaffMember,
@@ -20,37 +24,72 @@ import {
   upsertStaffMember,
 } from "@/lib/store";
 
+type InviteResult = {
+  code: string;
+  loginUrl: string;
+  delivered: boolean;
+  error: string | null;
+};
+
+function resolveLoginUrl(request: Request): string {
+  let origin: string;
+  try {
+    origin = getAppOrigin(request);
+  } catch {
+    origin = process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "https://gran-real-hotel.vercel.app";
+  }
+  return `${origin.replace(/\/$/, "")}/personal`;
+}
+
 async function sendInviteForStaff(input: {
   request: Request;
   email: string;
   name: string;
-}) {
-  if (!isEmailAuthConfigured()) {
-    throw new Error(
-      "El correo no está configurado (RESEND_API_KEY / MAIL_FROM). No se pudo enviar la invitación.",
-    );
-  }
+}): Promise<InviteResult> {
   const member = await getAuthorizedStaff(input.email);
   if (!member || !member.active) {
     throw new Error("Personal no autorizado o inactivo");
   }
+
   const code = createLoginCode();
   await saveLoginCode(input.email, code);
-  let origin: string;
-  try {
-    origin = getAppOrigin(input.request);
-  } catch {
-    origin =
-      process.env.VERCEL_PROJECT_PRODUCTION_URL
-        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-        : "https://gran-real-hotel.vercel.app";
+  const loginUrl = resolveLoginUrl(input.request);
+  const name = input.name || member.name;
+
+  if (!isEmailAuthConfigured()) {
+    const error =
+      "El correo no está configurado (RESEND_API_KEY / MAIL_FROM). Comparte el código manualmente.";
+    await recordUndeliveredInvite({
+      to: input.email,
+      name,
+      code,
+      loginUrl,
+      reason: error,
+    });
+    return { code, loginUrl, delivered: false, error };
   }
-  await sendStaffInviteEmail({
-    to: input.email,
-    name: input.name || member.name,
-    code,
-    loginUrl: `${origin.replace(/\/$/, "")}/personal`,
-  });
+
+  try {
+    await sendStaffInviteEmail({
+      to: input.email,
+      name,
+      code,
+      loginUrl,
+    });
+    return { code, loginUrl, delivered: true, error: null };
+  } catch (err) {
+    const error = humanizeMailError(err);
+    await recordUndeliveredInvite({
+      to: input.email,
+      name,
+      code,
+      loginUrl,
+      reason: error,
+    });
+    return { code, loginUrl, delivered: false, error };
+  }
 }
 
 export async function GET() {
@@ -114,30 +153,22 @@ export async function POST(request: Request) {
       createdBy: owner.email,
     });
 
-    let inviteSent = false;
-    let inviteError: string | null = null;
-    try {
-      await sendInviteForStaff({
-        request,
-        email,
-        name: member.name,
-      });
-      inviteSent = true;
-    } catch (error) {
-      inviteError =
-        error instanceof Error
-          ? error.message
-          : "No se pudo enviar el correo de invitación";
-    }
+    const invite = await sendInviteForStaff({
+      request,
+      email,
+      name: member.name,
+    });
 
     return NextResponse.json(
       {
         member,
-        inviteSent,
-        inviteError,
-        message: inviteSent
-          ? `Personal autorizado. Se envió el correo a ${email} con el código para crear su contraseña.`
-          : `Personal autorizado, pero el correo no se envió: ${inviteError}`,
+        inviteSent: invite.delivered,
+        inviteCode: invite.code,
+        loginUrl: invite.loginUrl,
+        inviteError: invite.error,
+        message: invite.delivered
+          ? `Listo: se autorizó a ${email} y se envió el correo con el código.`
+          : `Listo: se autorizó a ${email}. El correo no salió (${invite.error}). Comparte este código: ${invite.code}`,
       },
       { status: 201 },
     );
@@ -188,14 +219,20 @@ export async function PATCH(request: Request) {
           { status: 400 },
         );
       }
-      await sendInviteForStaff({
+      const invite = await sendInviteForStaff({
         request,
         email,
         name: member.name,
       });
       return NextResponse.json({
         ok: true,
-        message: `Correo reenviado a ${email}`,
+        inviteSent: invite.delivered,
+        inviteCode: invite.code,
+        loginUrl: invite.loginUrl,
+        inviteError: invite.error,
+        message: invite.delivered
+          ? `Listo: correo reenviado a ${email}.`
+          : `El correo no salió. Comparte este código con ${email}: ${invite.code}`,
       });
     }
 
@@ -207,12 +244,20 @@ export async function PATCH(request: Request) {
         );
       }
       const member = await setStaffActive(email, body.active);
-      return NextResponse.json({ member });
+      return NextResponse.json({
+        member,
+        message: body.active
+          ? `Listo: ${email} quedó activo.`
+          : `Listo: ${email} quedó desactivado.`,
+      });
     }
 
     if (body.authorizeReset === true) {
       const member = await authorizeStaffPasswordReset(email);
-      return NextResponse.json({ member });
+      return NextResponse.json({
+        member,
+        message: `Listo: reset autorizado 24h para ${email}.`,
+      });
     }
 
     if (body.role || body.name) {
@@ -224,7 +269,10 @@ export async function PATCH(request: Request) {
         role,
         createdBy: owner.email,
       });
-      return NextResponse.json({ member });
+      return NextResponse.json({
+        member,
+        message: `Listo: datos de ${email} actualizados.`,
+      });
     }
 
     return NextResponse.json({ error: "Sin cambios" }, { status: 400 });
@@ -264,7 +312,10 @@ export async function DELETE(request: Request) {
       );
     }
     await deleteStaffMember(email);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      message: `Listo: se eliminó a ${email}.`,
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudo eliminar";
