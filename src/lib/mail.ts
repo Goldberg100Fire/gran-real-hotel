@@ -96,6 +96,10 @@ async function sendWithSmtp(input: {
   const pass = process.env.SMTP_PASS!.trim();
   const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
   const port = Number(process.env.SMTP_PORT || 465);
+  // Gmail exige que el remitente sea la cuenta autenticada (no onboarding@resend.dev).
+  const from = input.from.includes(user)
+    ? input.from
+    : `${HOTEL.name} <${user}>`;
 
   const transporter = nodemailer.createTransport({
     host,
@@ -105,7 +109,7 @@ async function sendWithSmtp(input: {
   });
 
   const info = await transporter.sendMail({
-    from: input.from,
+    from,
     to: input.to,
     subject: input.subject,
     text: input.text,
