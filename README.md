@@ -28,7 +28,7 @@ No hay login de huéspedes ni reservas online.
 
 - Next.js + TypeScript + Tailwind
 - Firestore (inventario; opcional para el panel)
-- Resend (códigos de acceso del personal)
+- Correo de invitaciones: **Gmail SMTP** (sin dominio) o Resend (con dominio)
 
 ## Arranque local
 
@@ -58,7 +58,9 @@ Copia en **Vercel → Settings → Environment Variables** (Production) las mism
 | `FIREBASE_PROJECT_ID` | Persistencia real |
 | `FIREBASE_CLIENT_EMAIL` | Persistencia real |
 | `FIREBASE_PRIVATE_KEY` | Clave del service account (con `\n`) |
-| `RESEND_API_KEY` / `MAIL_FROM` | Códigos crear/recuperar contraseña |
+| `SMTP_USER` / `SMTP_PASS` | **Recomendado:** Gmail + contraseña de aplicación (invitar empleados sin dominio) |
+| `MAIL_FROM` | Ej. `Gran Real Hotel <tu@gmail.com>` (mismo correo que SMTP_USER) |
+| `RESEND_API_KEY` | Opcional si usas SMTP; solo con dominio verificado en Resend |
 
 Después: **Redeploy**. Comprueba `/api/health` → `"storage":"firestore"`.
 

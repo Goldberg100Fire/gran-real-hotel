@@ -1,3 +1,4 @@
+import nodemailer from "nodemailer";
 import { HOTEL } from "./hotel-info";
 import { formatDate, formatMoney } from "./format";
 import {
@@ -8,7 +9,7 @@ import {
 
 export type SendMailResult = {
   delivered: boolean;
-  mode: "resend" | "demo";
+  mode: "resend" | "smtp" | "demo";
   messageId: string;
 };
 
@@ -17,14 +18,26 @@ async function persistOutbox(input: {
   subject: string;
   html: string;
   text: string;
-  mode: "resend" | "demo";
+  mode: "resend" | "smtp" | "demo";
   delivered: boolean;
 }) {
   const { appendMailOutbox } = await import("./store");
   return appendMailOutbox(input);
 }
 
-/** Traduce errores técnicos de Resend a mensajes claros para el dueño. */
+export function isSmtpConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim(),
+  );
+}
+
+export function isResendConfigured(): boolean {
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() && process.env.MAIL_FROM?.trim(),
+  );
+}
+
+/** Traduce errores técnicos de Resend/SMTP a mensajes claros para el dueño. */
 export function humanizeMailError(raw: unknown): string {
   const text =
     raw instanceof Error
@@ -35,41 +48,97 @@ export function humanizeMailError(raw: unknown): string {
 
   if (/only send testing emails to your own email/i.test(text)) {
     return (
-      "Resend está en modo prueba: solo puede enviar a tu propio correo. " +
-      "Verifica un dominio en resend.com/domains y cambia MAIL_FROM a un correo de ese dominio. " +
-      "Mientras tanto, comparte el código de acceso con el empleado manualmente."
+      "Resend solo envía a tu propio correo sin dominio. " +
+      "Configura SMTP_USER y SMTP_PASS (Gmail con contraseña de aplicación) para invitar empleados sin comprar dominio."
+    );
+  }
+  if (/Invalid login|EAUTH|Username and Password not accepted/i.test(text)) {
+    return (
+      "Gmail rechazó el acceso. Usa una “contraseña de aplicación” (no la clave normal) en SMTP_PASS y activa 2 pasos en la cuenta."
     );
   }
   if (/domain is not verified|not verified/i.test(text)) {
     return (
-      "El dominio de MAIL_FROM no está verificado en Resend. " +
-      "Verifícalo en resend.com/domains o usa un remitente del dominio verificado."
+      "El dominio de Resend no está verificado. Usa Gmail SMTP (SMTP_USER / SMTP_PASS) para enviar sin dominio."
     );
   }
-  if (/RESEND_API_KEY|MAIL_FROM|Correo no configurado/i.test(text)) {
-    return "El correo no está configurado (RESEND_API_KEY / MAIL_FROM).";
+  if (/Correo no configurado|SMTP_|RESEND_API_KEY|MAIL_FROM/i.test(text)) {
+    return text;
   }
   if (/No se pudo enviar el correo:/i.test(text)) {
     return text.replace(/^No se pudo enviar el correo:\s*/i, "").length > 180
-      ? "No se pudo enviar el correo. Revisa Resend (dominio y MAIL_FROM)."
+      ? "No se pudo enviar el correo. Revisa SMTP (Gmail) o Resend."
       : text;
   }
   return text;
 }
 
-export async function sendEmail(input: {
+async function resolveFromAddress(): Promise<string> {
+  const { getResolvedMailFrom } = await import("./store");
+  const resolved = await getResolvedMailFrom();
+  if (resolved) return resolved;
+  if (process.env.MAIL_FROM?.trim()) return process.env.MAIL_FROM.trim();
+  const smtpUser = process.env.SMTP_USER?.trim();
+  if (smtpUser) return `${HOTEL.name} <${smtpUser}>`;
+  throw new Error(
+    "Correo no configurado. Define SMTP_USER/SMTP_PASS (Gmail) o RESEND_API_KEY/MAIL_FROM.",
+  );
+}
+
+async function sendWithSmtp(input: {
   to: string;
   subject: string;
   html: string;
   text: string;
+  from: string;
 }): Promise<SendMailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const { getResolvedMailFrom } = await import("./store");
-  const from = (await getResolvedMailFrom()) || process.env.MAIL_FROM;
-  if (!apiKey || !from) {
-    throw new Error(
-      "Correo no configurado. Define RESEND_API_KEY y MAIL_FROM en los secretos.",
-    );
+  const user = process.env.SMTP_USER!.trim();
+  const pass = process.env.SMTP_PASS!.trim();
+  const host = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 465);
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  const info = await transporter.sendMail({
+    from: input.from,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    html: input.html,
+  });
+
+  const messageId = info.messageId || `smtp-${Date.now()}`;
+  try {
+    await persistOutbox({
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      mode: "smtp",
+      delivered: true,
+    });
+  } catch (error) {
+    console.error("No se pudo guardar el correo en el outbox:", error);
+  }
+
+  return { delivered: true, mode: "smtp", messageId };
+}
+
+async function sendWithResend(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  from: string;
+}): Promise<SendMailResult> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("Falta RESEND_API_KEY");
   }
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -79,7 +148,7 @@ export async function sendEmail(input: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from,
+      from: input.from,
       to: [input.to],
       subject: input.subject,
       html: input.html,
@@ -105,14 +174,42 @@ export async function sendEmail(input: {
       delivered: true,
     });
   } catch (error) {
-    // El correo ya salió; no fallar el login/OTP por el historial.
     console.error("No se pudo guardar el correo en el outbox:", error);
   }
 
   return { delivered: true, mode: "resend", messageId };
 }
 
-/** Guarda la invitación en Correos aunque Resend no la haya entregado. */
+/**
+ * Preferir Gmail/SMTP (sin dominio) y usar Resend solo si SMTP no está.
+ * Si Resend falla por modo prueba y hay SMTP, no aplica: SMTP va primero.
+ */
+export async function sendEmail(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<SendMailResult> {
+  const from = await resolveFromAddress();
+
+  if (isSmtpConfigured()) {
+    try {
+      return await sendWithSmtp({ ...input, from });
+    } catch (error) {
+      throw new Error(humanizeMailError(error));
+    }
+  }
+
+  if (isResendConfigured()) {
+    return sendWithResend({ ...input, from });
+  }
+
+  throw new Error(
+    "Correo no configurado. Para invitar empleados sin dominio: define SMTP_USER y SMTP_PASS (Gmail con contraseña de aplicación).",
+  );
+}
+
+/** Guarda la invitación en Correos aunque el envío falle. */
 export async function recordUndeliveredInvite(input: {
   to: string;
   name: string;

@@ -78,7 +78,13 @@ export function isGoogleAuthConfigured(): boolean {
 }
 
 export function isEmailAuthConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
+  const smtp = Boolean(
+    process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim(),
+  );
+  const resend = Boolean(
+    process.env.RESEND_API_KEY?.trim() && process.env.MAIL_FROM?.trim(),
+  );
+  return smtp || resend;
 }
 
 function sign(value: string): string {

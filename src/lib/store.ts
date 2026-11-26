@@ -1144,7 +1144,7 @@ export async function appendMailOutbox(input: {
   subject: string;
   html: string;
   text: string;
-  mode: "resend" | "demo";
+  mode: "resend" | "smtp" | "demo";
   delivered: boolean;
 }): Promise<MailMessage> {
   const store = await readStore();

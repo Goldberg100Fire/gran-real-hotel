@@ -193,7 +193,7 @@ export interface MailMessage {
   subject: string;
   html: string;
   text: string;
-  mode: "resend" | "demo";
+  mode: "resend" | "smtp" | "demo";
   delivered: boolean;
   createdAt: string;
 }

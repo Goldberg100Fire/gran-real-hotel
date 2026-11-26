@@ -3380,24 +3380,49 @@ export function AdminPanel({
           <section className="space-y-4 rounded-2xl border border-[var(--brand-line)] bg-white p-5">
             <div>
               <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold text-[var(--brand-ink)]">
-                Dominio para enviar correos
+                Enviar invitaciones sin comprar dominio
               </h3>
               <p className="mt-1 text-sm text-[var(--brand-muted)]">
-                Resend solo deja enviar a tu propio correo hasta verificar un
-                dominio propio (ej.{" "}
-                <span className="font-medium text-[var(--brand-ink)]">
-                  granrealhotel.com
-                </span>
-                ). No sirve{" "}
-                <span className="font-medium">vercel.app</span> ni el correo
-                universitario <span className="font-medium">edu.pe</span>.
+                Usa un Gmail (o Google Workspace) con{" "}
+                <strong>contraseña de aplicación</strong>. Así el sistema envía
+                el enlace de crear cuenta a cualquier empleado, sin dominio
+                propio.
               </p>
               <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-[var(--brand-muted)]">
-                <li>Compra o usa un dominio que controles (Namecheap, GoDaddy, Cloudflare…).</li>
-                <li>Escríbelo abajo y pulsa Agregar en Resend.</li>
-                <li>Copia los registros DNS en tu proveedor del dominio.</li>
-                <li>Espera unos minutos y pulsa Verificar.</li>
+                <li>
+                  En tu cuenta Google: Seguridad → verificación en 2 pasos →
+                  Contraseñas de aplicaciones.
+                </li>
+                <li>
+                  Crea una para “Correo” y guarda la clave de 16 letras.
+                </li>
+                <li>
+                  En secretos del proyecto agrega{" "}
+                  <code className="rounded bg-[var(--brand-mist)] px-1">
+                    SMTP_USER
+                  </code>{" "}
+                  (tu Gmail) y{" "}
+                  <code className="rounded bg-[var(--brand-mist)] px-1">
+                    SMTP_PASS
+                  </code>{" "}
+                  (esa clave de 16 letras).
+                </li>
+                <li>
+                  Opcional:{" "}
+                  <code className="rounded bg-[var(--brand-mist)] px-1">
+                    MAIL_FROM
+                  </code>{" "}
+                  ={" "}
+                  <code className="rounded bg-[var(--brand-mist)] px-1">
+                    Gran Real Hotel &lt;tu@gmail.com&gt;
+                  </code>
+                  .
+                </li>
               </ol>
+              <p className="mt-3 text-sm text-[var(--brand-muted)]">
+                El dominio Resend abajo es opcional (solo si más adelante quieres
+                correo con marca propia).
+              </p>
             </div>
 
             {(snapshot.mailSettings || mailDomainDetail) && (
